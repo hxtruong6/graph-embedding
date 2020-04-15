@@ -1,22 +1,31 @@
 from time import time
-import networkx as nx
-from gensim.test.utils import get_tmpfile
 
+import networkx as nx
+from gensim.models import Word2Vec
+from gensim.test.utils import get_tmpfile
+from joblib import cpu_count
+
+from utils.graph_walker_ import GraphWalker
 from utils.skip_gram import SkipGram
 from utils.visualize import plot_embeddings
-from utils.graph_walker_ import GraphWalker
 
 
-class DeepWalk():
-    def __init__(self, graph, walks_per_vertex, walk_length):
+class Node2Vec:
+    def __init__(self, graph, walks_per_vertex, walk_length, p, q):
         """
 
         :param graph: graph input
         :param walks_per_vertex: (gamma param in paper) the number of looping through over all of nodes in graph
         :param walk_length: length of each walk path start node u
+        :param p: return parameter
+        :param q: in-out parameter
         """
         self.graph = graph
+        self.p = p
+        self.q = q
+
         self.graph_walker = GraphWalker(self.graph)
+        self.graph_walker.preprocess_transition_probs()
         self.walks_corpus = self.graph_walker.build_walk_corpus(walks_per_vertex, walk_length)
 
     def train(self, embedding_size, window_size):
@@ -42,14 +51,14 @@ class DeepWalk():
 
 if __name__ == "__main__":
     # Change this to run test
-    test_num = 1
+    test_num = 2
 
     # Test 1
     if test_num == 1:
         G = nx.read_edgelist('../data/Wiki_edgelist.txt',
                              create_using=nx.DiGraph(), nodetype=None, data=[('weight', int)])
 
-        model = DeepWalk(G, walks_per_vertex=20, walk_length=10)
+        model = Node2Vec(G, walks_per_vertex=20, walk_length=10, p=0.25, q=4)
         model.train(embedding_size=128, window_size=5)
         embeddings = model.get_embedding()
         plot_embeddings(G, embeddings, path_file="../data/Wiki_category.txt")
@@ -58,7 +67,7 @@ if __name__ == "__main__":
     if test_num == 2:
         G = nx.karate_club_graph()
 
-        model = DeepWalk(G, walks_per_vertex=20, walk_length=10)
+        model = Node2Vec(G, walks_per_vertex=20, walk_length=10, p=0.25, q=1.5)
         model.train(embedding_size=128, window_size=5)
         embeddings = model.get_embedding()
         plot_embeddings(G, embeddings)

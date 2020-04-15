@@ -1,7 +1,5 @@
 import networkx as nx
 import numpy as np
-import matplotlib.pyplot as plt
-
 
 class GraphWalker:
     def __init__(self, G):
@@ -30,6 +28,31 @@ class GraphWalker:
                 # print(walk_path)
                 self.walk_corpus.append(walk_path)
         return self.walk_corpus
+
+    def preprocess_transition_probs(self):
+        """
+        Preprocessing of transition probabilities for guiding the random walks.
+        """
+        G = self.G
+
+        alias_nodes = {}
+        for node in G.nodes():
+            unnormalized_probs = [G[node][nbr].get('weight', 1.0)
+                                  for nbr in G.neighbors(node)]
+            norm_const = sum(unnormalized_probs)
+            normalized_probs = [
+                float(u_prob)/norm_const for u_prob in unnormalized_probs]
+            alias_nodes[node] = create_alias_table(normalized_probs)
+
+        alias_edges = {}
+
+        for edge in G.edges():
+            alias_edges[edge] = self.get_alias_edge(edge[0], edge[1])
+
+        self.alias_nodes = alias_nodes
+        self.alias_edges = alias_edges
+
+        return
 
 
 if __name__ == "__main__":
