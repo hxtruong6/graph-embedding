@@ -20,7 +20,7 @@ class SDNE(StaticGraphEmbedding):
         '''
 
         hyper_params = {
-            'method_name': 'sdne',
+            'method_name': 'sdne_2',
             'actfn': 'relu',
             'modelfile': None,
             'weightfile': None,
