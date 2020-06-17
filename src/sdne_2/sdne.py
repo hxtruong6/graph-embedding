@@ -17,7 +17,7 @@ from classify import Classifier
 
 
 def evaluate_embeddings(embeddings):
-    X, Y = read_node_label(filename="../data/Wiki_labels.txt")
+    X, Y = read_node_label(filename="../../data/Wiki_labels.txt")
     tr_frac = 0.8
     print("Training classifier using {:.2f}% nodes...".format(tr_frac * 100))
     clf = Classifier(embeddings=embeddings, clf=LogisticRegression())
@@ -93,7 +93,8 @@ class SDNE:
     def reset_model(self, opt='adam'):
         self.model, self.emb_model = create_model(self.node_size, hidden_size=self.hidden_size, l1=self.nu1,
                                                   l2=self.nu2)
-        self.model.compile(opt, [l_2nd(self.beta), l_1st(self.alpha)])
+        # config model with optimizer and loss function.
+        self.model.compile(optimizer=opt, loss=[l_2nd(self.beta), l_1st(self.alpha)])
         self.get_embeddings()
 
     def evaluate(self):
@@ -101,13 +102,16 @@ class SDNE:
         return self.model.evaluate(x=self.inputs, y=self.inputs, batch_size=self.node_size)
 
     def train(self, batch_size=1024, epochs=1, initial_epoch=0, verbose=1):
+        print(self.model.summary())
+        # return
         if batch_size >= self.node_size:
             if batch_size > self.node_size:
                 print('batch_size({0}) > node_size({1}), set batch_size = {1}'.format(batch_size, self.node_size))
                 batch_size = self.node_size
-            return self.model.fit(x=[self.A.todense(), self.L.todense()], y=[self.A.todense(), self.L.todense()],
+            return self.model.fit([self.A.todense(), self.L.todense()], [self.A.todense(), self.L.todense()],
                                   batch_size=batch_size, epochs=epochs, initial_epoch=initial_epoch, verbose=verbose,
-                                  shuffle=False)
+                                  shuffle=False, )
+
         else:
             steps_per_epoch = (self.node_size - 1) // batch_size + 1
             hist = History()
@@ -143,45 +147,46 @@ class SDNE:
                 ))
         return hist
 
+    def get_embeddings(self):
+        self._embeddings = {}
+        embeddings = self.emb_model.predict(x=self.A.todense(), batch_size=self.node_size)
+        look_back = self.idx2node
+        for i, embedding in enumerate(embeddings):
+            self._embeddings[look_back[i]] = embedding
+        return self._embeddings
 
-def get_embeddings(self):
-    self._embeddings = {}
-    embeddings = self.emb_model.predict(self.A.todense(), batch_size=self.node_size)
-    look_back = self.idx2node
-    for i, embedding in enumerate(embeddings):
-        self._embeddings[look_back[i]] = embedding
-    return self._embeddings
+    def _create_A_L(self, graph, node2idx):
+        graph = nx.Graph(graph)
+        node_size = graph.number_of_nodes()
+        A_data = []
+        A_row_index = []
+        A_col_index = []
+
+        for edge in graph.edges():
+            v1, v2 = edge
+            edge_weight = graph[v1][v2].get('weight', 1)
+            A_data.append(edge_weight)
+            A_row_index.append(node2idx[v1])
+            A_col_index.append(node2idx[v2])
+
+        # TODO: ???
+        # https: // docs.scipy.org / doc / scipy / reference / generated / scipy.sparse.csc_matrix.html
+        A = sp.csc_matrix((A_data, (A_row_index, A_col_index)), shape=(node_size, node_size))
+        A_ = sp.csc_matrix((A_data + A_data, (A_row_index + A_col_index, A_col_index + A_row_index)),
+                           shape=(node_size, node_size))
+
+        D = sp.diags(A_.sum(axis=1).flatten().tolist()[0])
+        L = D - A_
+        return A, L
 
 
-def _create_A_L(self, graph, node2idx):
-    node_size = graph.number_of_nodes()
-    A_data = []
-    A_row_index = []
-    A_col_index = []
-
-    for edge in graph.edges():
-        v1, v2 = edge
-        edge_weight = graph[v1][v2].get('weight', 1)
-        A_data.append(edge_weight)
-        A_row_index.append(node2idx[v1])
-        A_col_index.append(node2idx[v2])
-
-    # TODO: ???
-    A = sp.csc_matrix((A_data, (A_row_index, A_col_index)), shape=(node_size, node_size))
-    A_ = sp.csc_matrix((A_data + A_data, (A_row_index + A_col_index, A_col_index + A_row_index)),
-                       shape=(node_size, node_size))
-
-    D = sp.diags(A_.sum(axis=1).flatten().tolist()[0])
-    L = D - A_
-    return A, L
-
-
-if __name__ == "'__main__":
-    G = nx.read_edgelist('../data/Wiki_edgelist.txt',
-                         create_using=nx.DiGraph(), nodetype=None, data=[('weight', int)])
-    model = SDNE(G, hiddent_size=[256, 128])
-    model.train(batch_size=3000, epochs=1, verbose=2)
+if __name__ == "__main__":
+    # G = nx.read_edgelist('../../data/Wiki_edgelist.txt',
+    #                      create_using=nx.DiGraph(), nodetype=None, data=[('weight', int)])
+    G = nx.karate_club_graph().to_directed()
+    model = SDNE(G, hidden_size=[256, 128])
+    model.train(batch_size=256, epochs=1, verbose=2)
     embeddings = model.get_embeddings()
 
-    evaluate_embeddings(embeddings)
-    plot_embeddings(G, embeddings, path_file="../data/Wiki_labels.txt")
+    # evaluate_embeddings(embeddings)
+    # plot_embeddings(G, embeddings, path_file="../data/Wiki_labels.txt")

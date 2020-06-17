@@ -6,6 +6,11 @@ def print_graph_stats(G):
 
 
 def preprocess_graph(graph):
+    '''
+
+    :param graph: graph input - adjacency matrix
+    :return: idx2node, node2idx
+    '''
     graph = nx.Graph(graph)
     node2idx = {}
     idx2node = []

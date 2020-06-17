@@ -52,3 +52,13 @@ def plot_embeddings(graph, embeddings, path_file=None):
         plt.scatter(node_pos[idx, 0], node_pos[idx, 1], label=c)
     plt.legend()
     plt.show()
+
+
+def plot_losses(losses, title=None, x_label=None, y_label=None):
+    fig = plt.figure()
+    plt.plot(losses)
+    plt.xlabel(x_label)
+    plt.ylabel(y_label)
+    plt.title(title)
+
+    plt.show()
