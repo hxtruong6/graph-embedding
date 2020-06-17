@@ -3,9 +3,9 @@ import networkx as nx
 import numpy as np
 import scipy.sparse as sparse
 
-from data_preprocessing.data_preprocessing import get_tf_dataset
+from data_preprocessing.data_preprocessing import next_datasets, get_graph_from_file
 from utils.autoencoder import Autoencoder
-from utils.graph_util import preprocess_graph
+from utils.visualize import plot_losses, plot_embedding
 
 
 class StaticGE(object):
@@ -23,51 +23,44 @@ class StaticGE(object):
             input_dim=self.input_dim,
             embedding_dim=self.embedding_dim,
             hidden_dims=self.hidden_dims,
-            v1=v1,
-            v2=v2
+            v1=nu1,
+            v2=nu2
         )
-
         self.A, self.L = self.create_A_L_matrix()
-        self.tf_dataset = get_tf_dataset(self.A, self.L)
 
-    def loss_calculate(self, X, L, alpha=0.01, beta=2):
+    def compute_loss(self, model, inputs, alpha=0.01, beta=2):
         '''
 
-        :param X:
-        :param L:
+        :param model:
+        :param inputs:
         :param alpha:
         :param beta:
         :return:
         '''
-        Y, X_hat = self.model(X)
 
         def loss_1st(Y, L):
-            # D = tf.linalg.diag(tf.math.count_nonzero(S, axis=1))
-            # D = tf.cast(D, tf.float32)
-            # L = tf.math.subtract(D, S)  # L = D - A : laplacian eigenmaps
-
             # 2 * tr(Y^T * L * Y)
             return 2 * tf.linalg.trace(
                 tf.linalg.matmul(tf.linalg.matmul(tf.transpose(Y), L), Y)
             )
 
         def loss_2nd(X_hat, X, beta):
-            B = X * (beta - 1) + 1
-            # print("B: ", B)
-            # print("B shape: ", B.shape)
+            B = np.ones_like(X)
+            B[X != 0] = beta
             return tf.reduce_sum(tf.pow((X_hat - X) * B, 2))
 
+        X, L = inputs
+        X_hat, Y = model(X)
+
         loss_1 = loss_1st(Y, L)
-        # print("1st: ", loss_1)
         loss_2 = loss_2nd(X_hat, X, beta)
-        # print("2nd: ",loss_2)
         return loss_2 + alpha * loss_1
 
-    def train(self, epochs=10, learning_rate=0.003):
-        def train_func(loss, model, opt, X, L, alpha, beta):
+    def train(self, batch_size=1, epochs=10, learning_rate=0.003):
+        def train_func(loss, model, opt, inputs, alpha, beta):
             with tf.GradientTape() as tape:
                 gradients = tape.gradient(
-                    loss(model, X, L, alpha, beta),
+                    loss(model, inputs, alpha, beta),
                     model.trainable_variables
                 )
             gradient_variables = zip(gradients, model.trainable_variables)
@@ -79,40 +72,34 @@ class StaticGE(object):
         graph_embedding_list = []
         losses = []
 
-        # tf.keras.backend.clear_session()
+        # datasets = get_transform(self.tf_dataset, batch_size=1, prefetch_times=1, shuffle=False)
+        tf.keras.backend.clear_session()
         opt = tf.optimizers.Adam(learning_rate=learning_rate)
         with writer.as_default():
             with tf.summary.record_if(True):
                 for epoch in range(epochs):
                     epoch_loss = []
-                    for step, batch in enumerate(self.tf_dataset):
-                        A, L = batch
-                        print(f"A= {A}")
-                        print(f"L= {L}")
-                #         A = A.todense()
-                #         L = L.todense()
-                #
-                #     train_func(self.loss_calculate, self.model, opt, batch_features, L, alpha=self.alpha,
-                #                beta=self.beta)
-                #     # loss_values = self.loss_calculate(self.model, batch_features, S, beta_loss)
-                #     # epoch_loss.append(loss_values)
-                #     # tf.summary.scalar('loss', loss_values, step=epoch)
-                #
-                #     # embedding = autoencoder.get_embedding(S)
-                #     # print(embedding.shape)
-                #     if epoch % 400 == 0:
-                #         # plot_embeded(embedding[:500, :])
-                #         # graph_embedding_list.append(embedding)
-                #         mean_epoch_loss = np.mean(epoch_loss)
-                #         print(f"\tEpoch {epoch}: Loss = {mean_epoch_loss}")
-                #         losses.append(mean_epoch_loss)
-                #
-                # # plot_loss(losses)
-                # print(f"Loss = {losses[-1]}")
+                    for step, batch_inp in next_datasets(self.A, self.L, batch_size=batch_size):
+                        train_func(self.compute_loss, self.model, opt, batch_inp, alpha=self.alpha,
+                                   beta=self.beta)
+                        loss_values = self.compute_loss(self.model, batch_inp, alpha=self.alpha,
+                                                        beta=self.beta)
+                        epoch_loss.append(loss_values)
+                    # tf.summary.scalar('loss', loss_values, step=epoch)
+                    embedding = self.model.get_embedding(S)
+                    mean_epoch_loss = np.mean(epoch_loss)
+                    print(f"\tEpoch {epoch}: Loss = {mean_epoch_loss}")
+                    losses.append(mean_epoch_loss)
+
+                    if epoch % 100 == 0:
+                        plot_embedding(embedding[:max(500, embedding.shape[0]), :])
+
+                plot_losses(losses, title="Train GE", x_label="Epoch", y_label="Loss value")
+                print(f"Loss = {losses[-1]}")
 
     def create_A_L_matrix(self):
-        A = nx.to_scipy_sparse_matrix(self.G, format='csr')
-        D = sparse.diags(A.sum(axis=1).flatten().tolist()[0])
+        A = nx.to_scipy_sparse_matrix(self.G, format='csr').astype(np.float32)
+        D = sparse.diags(A.sum(axis=1).flatten().tolist()[0]).astype(np.float32)
         L = D - A
         return A, L
 
@@ -124,13 +111,15 @@ class StaticGE(object):
 
 
 if __name__ == "__main__":
-    S = np.array([
-        [0, 2, 0, 4, 5],
-        [2, 0, 1, 0, 6],
-        [0, 1, 0, 0, 0],
-        [4, 0, 0, 0, 0],
-        [5, 6, 0, 0, 0]
-    ])
+    G_tmp = get_graph_from_file(filename="../data/ca-AstroPh.txt")
+    S = nx.adj_matrix(G_tmp).todense()[:1000, :1000]
+    # S = np.array([
+    #     [0, 2, 0, 4, 5],
+    #     [2, 0, 1, 0, 6],
+    #     [0, 1, 0, 0, 0],
+    #     [4, 0, 0, 0, 0],
+    #     [5, 6, 0, 0, 0]
+    # ])
     G = nx.from_numpy_matrix(S, create_using=nx.Graph)
-    ge = StaticGE(G=G, embedding_dim=2, hidden_dims=[128, 512])
-    ge.train()
+    ge = StaticGE(G=G, embedding_dim=64, hidden_dims=[128,256, 512])
+    ge.train(batch_size=64, epochs=400)

@@ -1,6 +1,6 @@
 import networkx as nx
 import numpy as np
-from tensorflow.data import Dataset
+import tensorflow as tf
 from tensorflow import SparseTensor
 
 
@@ -11,25 +11,29 @@ def get_graph_from_file(filename):
     return G
 
 
-def get_data_loader(S, batch_size=128):
-    training_features = S.astype('float32')
-    training_dataset = Dataset.from_tensor_slices(training_features)
-    training_dataset = training_dataset.batch(batch_size)
-    # training_dataset = training_dataset.shuffle(training_features.shape[0])  # shuffle all node in graph. |V| = training_feature.shape[0] = A.todense().shape[0]
-    training_dataset = training_dataset.prefetch(batch_size * 4)
-    return training_dataset
-
-
 def convert_sparse_matrix_to_sparse_tensor(X):
     coo = X.tocoo()
     indices = np.mat([coo.row, coo.col]).transpose()
     return SparseTensor(indices, coo.data, coo.shape)
 
-def get_tf_dataset(A, L):
-    A_ = convert_sparse_matrix_to_sparse_tensor(A)
-    L_ = convert_sparse_matrix_to_sparse_tensor(L)
-    A_ds = Dataset.from_tensor_slices(A_)
-    L_ds = Dataset.from_tensor_slices(L_)
 
-    dataset = Dataset.zip((A_ds, L_ds))
-    return dataset
+def next_datasets(A, L, batch_size):
+    '''
+
+    :param A:
+    :param L:
+    :param batch_size:
+    :return:
+    '''
+    dataset_size = A.shape[0]
+    steps_per_epoch = (dataset_size - 1) // batch_size + 1
+    i = 0
+    while i < steps_per_epoch:
+        index = np.arange(
+            i * batch_size, min((i + 1) * batch_size, dataset_size))
+        A_train = A[index, :].todense()
+        L_train = L[index][:, index].todense()
+        batch_inp = [A_train, L_train]
+
+        yield i, batch_inp
+        i += 1
