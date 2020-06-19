@@ -1,6 +1,6 @@
 import tensorflow as tf
 from tensorflow.keras.layers import Layer, Dense
-from tensorflow.keras import Model
+from tensorflow.keras import Model, regularizers
 import numpy as np
 import json
 
@@ -17,7 +17,7 @@ class PartCoder(Layer):
             layer = Dense(
                 units=dim,
                 activation=tf.nn.relu,
-                kernel_regularizer=tf.keras.regularizers.l1_l2(l1=self.l1, l2=self.l2)
+                kernel_regularizer=regularizers.l1_l2(l1=self.l1, l2=self.l2)
             )
             self.layers.append(layer)
 
@@ -25,44 +25,81 @@ class PartCoder(Layer):
         self.layers.append(Dense(
             units=output_dim,
             activation=tf.nn.relu,
-            kernel_regularizer=tf.keras.regularizers.l1_l2(l1=self.l1, l2=self.l2)
+            kernel_regularizer=regularizers.l1_l2(l1=self.l1, l2=self.l2)
         ))
 
     def wider(self, added_size=1, pos_layer=None):
         layers_size = len(self.layers)
+        if layers_size < 2:
+            raise ValueError("Number of layer must be greater than 2.")
         if pos_layer is None:
-            pos_layer = layers_size - 2
-        elif pos_layer >= layers_size - 1:
+            pos_layer = max(layers_size - 2, 0)
+        elif pos_layer >= layers_size - 1 or pos_layer < 0:
             raise ValueError(
-                f"pos_layer is expected less than length of layers. pos_layer in [0, layers_size-2]")
+                f"pos_layer is expected less than length of layers (pos_layer in [0, layers_size-2])")
 
         weights, bias = self.layers[pos_layer].get_weights()
-        weights_next_layer, _ = self.layers[pos_layer + 1].get_weights()
+        weights_next_layer, bias_next_layer = self.layers[pos_layer + 1].get_weights()
 
-        pass
-        # new_weights, new_bias, new_weights_next_layer = net2wider(weights, bias, weights_next_layer)
+        new_weights, new_bias, new_weights_next_layer = net2wider(weights, bias, weights_next_layer, added_size)
+
+        src_units, des_units = weights.shape[0], weights.shape[1] + added_size
+        next_des_units = weights_next_layer.shape[1]
+
+        wider_layer = Dense(
+            units=des_units,
+            activation=tf.nn.relu,
+            kernel_regularizer=regularizers.l1_l2(l1=self.l1, l2=self.l2)
+        )
+
+        # input_shape = (batch_size, input_features).
+        # input_features = number of units in layer = length(layer) = output of previous layer
+        wider_layer.build(input_shape=(1, src_units))
+        wider_layer.set_weights([new_weights, new_bias])
+
+        next_layer = Dense(
+            units=next_des_units,
+            activation=tf.nn.relu,
+            kernel_regularizer=regularizers.l1_l2(l1=self.l1, l2=self.l2)
+        )
+        next_layer.build(input_shape=(1, des_units))
+        next_layer.set_weights([new_weights_next_layer, bias_next_layer])
+
+        self.layers[pos_layer] = wider_layer
+        self.layers[pos_layer + 1] = next_layer
 
     def deeper(self, pos_layer=None):
         layers_size = len(self.layers)
         if pos_layer is None:
             pos_layer = max(layers_size - 2, 0)
-        elif pos_layer >= layers_size - 1:
+        elif pos_layer >= layers_size - 1 or pos_layer < 0:
             raise ValueError(
-                f"pos_layer is expected less than length of layers. pos_layer in [0, layers_size-2]")
+                f"pos_layer is expected less than length of layers (pos_layer in [0, layers_size-2]).")
 
         weights, bias = self.layers[pos_layer].get_weights()
         new_weights, new_bias = net2deeper(weights)
-        src_units = des_units = weights.shape[1]
+        des_units = weights.shape[1]
         layer = Dense(
             units=des_units,
             activation=tf.nn.relu,
-            kernel_regularizer=tf.keras.regularizers.l1_l2(l1=self.l1, l2=self.l2),
-            # kernel_initializer='glorot_uniform'
+            kernel_regularizer=regularizers.l1_l2(l1=self.l1, l2=self.l2),
         )
-        layer.build(input_shape=(src_units, des_units))
+        layer.build(input_shape=(1, des_units))
         layer.set_weights([new_weights, new_bias])
 
         self.layers.insert(pos_layer + 1, layer)
+
+    def set_dump_weight(self):
+        for i in range(len(self.layers)):
+            w, b = self.layers[i].get_weights()
+
+            for u in range(w.shape[0]):
+                for v in range(w.shape[1]):
+                    w[u][v] = u * w.shape[1] + v
+            for v in range(b.shape[0]):
+                b[v] = v
+
+            self.layers[i].set_weights([w, b])
 
     def call(self, inputs):
         z = inputs
@@ -81,6 +118,9 @@ class PartCoder(Layer):
             if show_config:
                 print(f"Config: {json.dumps(layer.get_config(), sort_keys=True, indent=4)}")
 
+    def get_length_layers(self):
+        return len(self.layers)
+
 
 class Autoencoder(Model):
     def __init__(self, input_dim, embedding_dim, hidden_dims=None, v1=0.01, v2=0.01):
@@ -91,6 +131,20 @@ class Autoencoder(Model):
 
         self.encoder = PartCoder(output_dim=embedding_dim, hidden_dims=hidden_dims, l1=v1, l2=v2)
         self.decoder = PartCoder(output_dim=input_dim, hidden_dims=hidden_dims[::-1], l1=v1, l2=v2)
+
+    def wider(self, added_size=1, pos_layer=None):
+        if pos_layer is None:
+            pos_layer = self.encoder.get_length_layers() - 2
+
+        self.encoder.wider(added_size=added_size, pos_layer=pos_layer)
+        self.decoder.wider(added_size=added_size, pos_layer=self.decoder.get_length_layers() - pos_layer - 2)
+
+    def deeper(self, pos_layer=None):
+        if pos_layer is None:
+            pos_layer = self.encoder.get_length_layers() - 2
+
+        self.encoder.deeper(pos_layer=pos_layer)
+        self.decoder.deeper(pos_layer=self.decoder.get_length_layers() - pos_layer - 2)
 
     def call(self, inputs):
         Y = self.encoder(inputs)
@@ -103,32 +157,74 @@ class Autoencoder(Model):
     def get_reconstruction(self, inputs):
         return self.decoder(self.encoder(inputs))
 
+    def info(self, show_weight=False, show_config=False):
+        self.encoder.info(show_weight, show_config)
+        self.decoder.info(show_weight, show_config)
+
 
 if __name__ == "__main__":
-    print("\n#######\nEncoder")
-    # Suppose: 4 -> 3-> 5 -> 2
-    encoder = PartCoder(output_dim=2, hidden_dims=[3, 5])
-    x = tf.ones((3, 4))
-    y = encoder(x)
-    # print("y=", y)
+    # print("\n#######\nEncoder")
+    # # Suppose: 4 -> 3-> 5 -> 2
+    # encoder = PartCoder(output_dim=2, hidden_dims=[3, 5])
+    # x = tf.ones((3, 4))
+    # y = encoder(x)
+    # # print("y=", y)
+    # # encoder.info(show_weight=True, show_config=False)
+    # encoder.deeper()
+    # y = encoder(x)
+    # # print("y=", y)
+    # print("After deeper")
     # encoder.info(show_weight=True, show_config=False)
-    encoder.deeper()
-    y = encoder(x)
-    # print("y=", y)
-    print("After deeper")
-    encoder.info(show_weight=True, show_config=False)
+    #
+    # # ----------- Decoder -----------
+    # print("\n####\nDecoder")
+    # # Suppose: 2 -> 5 -> 3 -> 4
+    #
+    # decoder = PartCoder(output_dim=4, hidden_dims=[5, 3])
+    # x = tf.ones((3, 2))
+    # y = decoder(x)
+    # # print("y=", y)
+    # # encoder.info(show_weight=True, show_config=False)
+    # decoder.deeper()
+    # y = decoder(x)
+    # # print("y=", y)
+    # print("After deeper")
+    # decoder.info(show_weight=True, show_config=False)
 
-    # ----------- Decoder -----------
-    print("\n####\nDecoder")
-    # Suppose: 2 -> 5 -> 3 -> 4
-
-    decoder = PartCoder(output_dim=4, hidden_dims=[5, 3])
-    x = tf.ones((3, 2))
-    y = decoder(x)
-    # print("y=", y)
+    # print("\n#######\nWider encoder")
+    # # Suppose: 2 -> 3 -> 2
+    # encoder = PartCoder(output_dim=2, hidden_dims=[3, 4, 1])
+    # x = tf.ones((3, 2))
+    #
+    # print("[Original] y=", encoder(x))
     # encoder.info(show_weight=True, show_config=False)
-    decoder.deeper()
-    y = decoder(x)
-    # print("y=", y)
-    print("After deeper")
-    decoder.info(show_weight=True, show_config=False)
+    # print("[Original_1] y=", encoder(x))
+    #
+    # encoder.set_dump_weight()
+    # print("[Dump] y=", encoder(x))
+    # encoder.info(show_weight=True, show_config=False)
+    #
+    # encoder.wider(added_size=4)
+    # print("After wider")
+    # print("[Wider] y=", encoder(x))
+    # encoder.info(show_weight=True, show_config=False)
+    #
+    # encoder.deeper()
+    # print("\n###### Deeper ")
+    # print("[Deeper] y=", encoder(x))
+    # encoder.info(show_weight=True, show_config=False)
+    #
+    # encoder.wider()
+    # print("\n##### Wider")
+    # print("[Wider] y=", encoder(x))
+    # encoder.info(show_weight=True, show_config=False)
+
+    ae = Autoencoder(input_dim=4, embedding_dim=2, hidden_dims=[3])
+    X = np.random.rand(2, 4)
+    X_hat, Y = ae(X)
+
+    ae.info()
+    print("##### ----> Modify")
+    ae.wider(added_size=2)
+    ae.deeper()
+    ae.info()
