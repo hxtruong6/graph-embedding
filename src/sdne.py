@@ -1,194 +1,192 @@
-from keras.layers import Lambda, Subtract
-from keras import backend as KBack
-from keras.optimizers import SGD, Adam
+from datetime import time
 
-from static_graph_embedding import StaticGraphEmbedding
-from utils import graph_util
-from utils.sdne_utils import *
 import networkx as nx
-from time import time
+import tensorflow as tf
+from tensorflow.python.keras import backend as K
+from tensorflow.python.keras.layers import Dense, Input
+from tensorflow.python.keras.models import Model
+from tensorflow.python.keras.callbacks import History
+from sklearn.linear_model import LogisticRegression
+from tensorflow_core.python.keras.regularizers import l1_l2
+import numpy as np
+import scipy.sparse as sp
+from utils.graph_util import preprocess_graph
+from utils.visualize import plot_embeddings, read_node_label
 
-from utils.visualize import plot_embeddings
+from classify import Classifier
 
 
-class SDNE(StaticGraphEmbedding):
-    def __init__(self, *hyper_dict, **kwargs):
+def evaluate_embeddings(embeddings):
+    X, Y = read_node_label(filename="../../data/Wiki_labels.txt")
+    tr_frac = 0.8
+    print("Training classifier using {:.2f}% nodes...".format(tr_frac * 100))
+    clf = Classifier(embeddings=embeddings, clf=LogisticRegression())
+    clf.split_train_evaluate(X, Y, tr_frac)
+
+
+def create_model(node_size, hidden_size=[256, 128], l1=1e-5, l2=1e-4):
+    X = Input(shape=(node_size,))
+    L = Input(shape=(None,))  # dummy layer
+
+    fc = X
+    for i in range(len(hidden_size)):
+        # embedding layer
+        if i == len(hidden_size) - 1:
+            fc = Dense(hidden_size[i], activation='relu', kernel_regularizer=l1_l2(l1, l2), name='1st')(fc)
+        else:  # normal hidden layer
+            fc = Dense(hidden_size[i], activation='relu', kernel_regularizer=l1_l2(l1, l2))(fc)
+    # assign embedding layer to Y
+    Y = fc
+    for i in reversed(range(len(hidden_size) - 1)):
+        fc = Dense(hidden_size[i], activation='relu', kernel_regularizer=l1_l2(l1, l2))(fc)
+    # assign last hidden layer has input size as Input layer. x = x_hat
+    X_hat = Dense(node_size, 'relu', name='2nd')(fc)
+    model = Model(inputs=[X, L], outputs=[X_hat, Y])
+    emb = Model(inputs=X, outputs=Y)
+    return model, emb
+
+
+def l_1st(alpha):
+    def loss_1st(y_true, y_pred):
+        L = y_true
+        Y = y_pred
+        batch_size = tf.to_float(K.shape(L)[0])
+        # 2* alpha * tr(Y.T*L*Y)
+        return alpha * 2 * tf.linalg.trace(tf.matmul(tf.matmul(tf.transpose(Y), L), Y)) / batch_size
+
+
+def l_2nd(beta):
+    def loss_2nd(y_true, y_pred):
+        b_ = np.ones_like(y_true)
+        b_[y_true != 0] = beta
+        x = K.square((y_pred - y_true) * b_)
+        t = K.sum(x, axis=-1, )
+        return K.mean(t)
+
+
+class SDNE:
+    def __init__(self, graph, hidden_size=[32, 16], alpha=1e-6, beta=5.0, nu1=1e-5, nu2=1e-4):
         '''
-        Initialize the SDNE class
-        :param hyper_dict:
-        :param kwargs:
+
+        :param graph:
+        :param hidden_size:
+        :param alpha:
+        :param beta:
+        :param nu1:
+        :param n2:
         '''
+        self.graph = nx.Graph(graph)
+        self.idx2node, self.node2idx = preprocess_graph(self.graph)
+        self.node_size = self.graph.number_of_nodes()
+        self.hidden_size = hidden_size
+        self.alpha = alpha
+        self.beta = beta
+        self.nu1 = nu1
+        self.nu2 = nu2
 
-        hyper_params = {
-            'method_name': 'sdne_2',
-            'actfn': 'relu',
-            'modelfile': None,
-            'weightfile': None,
-            'savefilesuffix': None
-        }
-        hyper_params.update(kwargs)
+        # Create matrix: Adj matrix, L matrix
+        self.A, self.L = self._create_A_L(self.graph, self.node2idx)
+        self.reset_model()
+        self.inputs = [self.A, self.L]
+        self._embedding = {}
 
-        for key in hyper_params.keys():
-            self.__setattr__('_%s' % key, hyper_params[key])
+    def reset_model(self, opt='adam'):
+        self.model, self.emb_model = create_model(self.node_size, hidden_size=self.hidden_size, l1=self.nu1,
+                                                  l2=self.nu2)
+        # config model with optimizer and loss function.
+        self.model.compile(optimizer=opt, loss="mse")
+        self.get_embeddings()
 
-        for dictionary in hyper_dict:
-            for key in dictionary:
-                self.__setattr__('_s%' % key, dictionary[key])
+    def evaluate(self):
+        # TODO: batch_size should 2^n
+        return self.model.evaluate(x=self.inputs, y=self.inputs, batch_size=self.node_size)
 
-    def get_method_name(self):
-        return self._medthod_name
+    def train(self, batch_size=1024, epochs=1, initial_epoch=0, verbose=1):
+        print(self.model.summary())
+        # return
+        if batch_size >= self.node_size:
+            if batch_size > self.node_size:
+                print('batch_size({0}) > node_size({1}), set batch_size = {1}'.format(batch_size, self.node_size))
+                batch_size = self.node_size
+            return self.model.fit([self.A.todense(), self.L.todense()], [self.A.todense(), self.L.todense()],
+                                  batch_size=batch_size, epochs=epochs, initial_epoch=initial_epoch, verbose=verbose,
+                                  shuffle=False, )
 
-    def get_method_summary(self):
-        return '%s_%d' % (self._method_name, self._d)
+        else:
+            steps_per_epoch = (self.node_size - 1) // batch_size + 1
+            hist = History()
+            hist.on_train_begin()
+            logs = {}
+            for epoch in range(initial_epoch, epochs):
+                start_time = time.time()
+                losses = np.zeros(3)
+                for i in range(steps_per_epoch):
+                    index = np.arange(
+                        i * batch_size, min((i + 1) * batch_size, self.node_size)
+                    )
+                    A_train = self.A[index, :].todense()
 
-    def learn_embedding(self, graph=None, edge_f=None,
-                        is_weighted=False, no_python=False):
+                    L_mat_train = self.L[index][:, index].todense()
+                    inp = [A_train, L_mat_train]
+                    print("A_train: ", A_train)
+                    print("L_mat_train: ", L_mat_train)
+                    batch_losses = self.model.train_on_batch(inp, inp)
+                    losses += batch_losses
+                losses = losses / steps_per_epoch
+
+                logs['loss'] = losses[0]
+                logs['2nd_loss'] = losses[1]
+                logs['1st_loss'] = losses[2]
+
+                epoch_time = int(time.time() - start_time)
+                hist.on_epoch_begin(epoch, logs)
+                if verbose > 0:
+                    print('Epoch {0}/{1}'.format(epoch + 1, epochs))
+                print('{0}s - loss: {1: .4f} - 2nd_loss: {2: .4f} - 1st_lost: {3: .4f}'.format(
+                    epoch_time, losses[0], losses[1], losses[2]
+                ))
+        return hist
+
+    def get_embeddings(self):
+        self._embeddings = {}
+        embeddings = self.emb_model.predict(x=self.A.todense(), batch_size=self.node_size)
+        look_back = self.idx2node
+        for i, embedding in enumerate(embeddings):
+            self._embeddings[look_back[i]] = embedding
+        return self._embeddings
+
+    def _create_A_L(self, graph, node2idx):
         graph = nx.Graph(graph)
-        if not graph and not edge_f:
-            raise Exception('graph/edge_f needed')
-        # if not graph:
-        #     graph = graph_util.loadGraphFromEdgeListTxt(edge_f)
+        node_size = graph.number_of_nodes()
+        A_data = []
+        A_row_index = []
+        A_col_index = []
 
-        S = nx.to_scipy_sparse_matrix(graph)
-        t1 = time()
-        S = (S + S.T) / 2  # TODO ???
-        self._node_num = graph.number_of_nodes()
+        for edge in graph.edges():
+            v1, v2 = edge
+            edge_weight = graph[v1][v2].get('weight', 1)
+            A_data.append(edge_weight)
+            A_row_index.append(node2idx[v1])
+            A_col_index.append(node2idx[v2])
 
-        # Generate encoder, decoder and autoencoder
-        self._num_iter = self._n_iter
+        # TODO: ???
+        # https: // docs.scipy.org / doc / scipy / reference / generated / scipy.sparse.csc_matrix.html
+        A = sp.csc_matrix((A_data, (A_row_index, A_col_index)), shape=(node_size, node_size))
+        A_ = sp.csc_matrix((A_data + A_data, (A_row_index + A_col_index, A_col_index + A_row_index)),
+                           shape=(node_size, node_size))
 
-        # If cannot use previous step information, initalize new models
-        self._encoder = get_encoder(self._node_num, self._d, self._K, self._n_units,
-                                    self._nu1, self._nu2, self._actfn)
-
-        self._decoder = get_decoder(self._node_num, self._d, self._K, self._n_units,
-                                    self._nu1, self._nu2, self._actfn)
-
-        self._autoencoder = get_autoencoder(self._encoder, self._decoder)
-
-        # Initialize self._model
-        # Input TODO: ???
-        x_in = Input(shape=(2 * self._node_num,), name='x_in')
-        x1 = Lambda(lambda x: x[:, 0:self._node_num],
-                    output_shape=(self._node_num,))(x_in)
-        x2 = Lambda(lambda x: x[:, self._node_num:2 * self._node_num],
-                    output_shape=(self._node_num,))(x_in)
-
-        # Process inputs
-        [x_hat1, y1] = self._autoencoder(x1)
-        [x_hat2, y2] = self._autoencoder(x2)
-
-        # Output
-        x_diff1 = Subtract()([x_hat1, x1])
-        x_diff2 = Subtract()([x_hat2, x2])
-        y_diff = Subtract()([y2, y1])
-
-        # Objectives
-        def weighted_mse_x(y_true, y_pred):
-            return KBack.sum(KBack.square(y_pred * y_true[:, 0:self._node_num]), axis=-1) \
-                   / y_true[:, self._node_num]
-
-        def weighted_mse_y(y_true, y_pred):
-            min_batch_size = KBack.shape(y_true)[0]
-            return KBack.reshape(KBack.sum(KBack.square(y_pred), axis=-1), [min_batch_size, 1]) \
-                   * y_true
-
-        # Model
-        self._model = Model(input=x_in, output=[x_diff1, x_diff2, y_diff])
-        sgd = SGD(lr=self._xeta, decay=1e-5, momentum=0.99, nesterov=True)
-
-        # adam = Adam(lr=self._xeta, beta_1=0.9, beta_2=0.999, epsilon=1e-08)
-        self._model.compile(
-            optimizer=sgd,
-            loss=[weighted_mse_x, weighted_mse_x, weighted_mse_y],
-            loss_weights=[1, 1, self._alpha]
-        )
-
-        self._model.fit_generator(
-            generator=batch_generator_sdne(S, self._beta, self._n_batch, shuffle=True),
-            epochs=self._num_iter,
-            steps_per_epoch=S.nonzero()[0].shape[0] // self._n_batch,
-            verbose=1
-        )
-
-        # Get embedding for all points
-        self._Y = model_batch_predictor(self._autoencoder, S, self._n_batch)
-        t2 = time()
-        self.save_autoencoder()
-        return self._Y, (t2 - t1)
-
-    def save_autoencoder(self):
-        # Save the autoencoder and its weights
-        if self._weightfile is not None:
-            save_weights(self._encoder, self._weightfile[0])
-            save_weights(self._decoder, self._weightfile[1])
-
-        if self._modelfile is not None:
-            save_model(self._encoder, self._modelfile[0])
-            save_model(self._decoder, self._modelfule[1])
-
-        if self._savefilesuffix is not None:
-            save_weights(self._encoder, 'encoder_weights_' + self._savefilesuffix + '.hdf5')
-            save_weights(self._decoder, 'decoder_weights_' + self._savefilesuffix + '.hdf5')
-            save_model(self._encoder, 'encoder_model_' + self._savefilesuffix + '.json')
-            save_model(self._decoder, 'decoder_model_' + self._savefilesuffix + '.json')
-            # Save the embedding
-            np.savetxt('embedding_' + self._savefilesuffix + '.txt', self._Y)
-
-    def get_embedding(self, filesuffix=None):
-        return self._Y if filesuffix is None else np.loadtxt('embedding_' + filesuffix + '.txt')
-
-    def get_edge_weight(self, i, j, embed=None, filesuffix=None):
-        if embed is None:
-            if filesuffix is None:
-                embed = self._Y
-            else:
-                embed = np.loadtxt('embedding_' + filesuffix + '.txt')
-        if i == j:
-            return 0
-        else:
-            S_hat = self.get_reconst_from_embed(embed[(i, j), :], filesuffix)
-            return (S_hat[i, j] + S_hat[i, j]) / 2
-
-    def get_reconst_from_embed(self, embed, node_l=None, filesuffix=None):
-        decoder = None
-        if filesuffix is None:
-            decoder = self._decoder
-        else:
-            try:
-                decoder = model_from_json(open('decoder_model_' + filesuffix + '.json').read())
-            except:
-                print("Error reading file: {0}. Cannot load previous model".format(
-                    'decoder_model' + filesuffix + '.hdf5'))
-                exit()
-
-        if node_l is not None:
-            return decoder.predict(embed, batch_size=self._n_batch)[:, node_l]
-        else:
-            return decoder.predict(embed, batch_size=self._n_batch)
-
-    def get_reconstructed_adj(self, embed=None, node_l=None, filesuffix=None):
-        if embed is None:
-            if filesuffix is None:
-                embed = self._Y
-            else:
-                embed = np.loadtxt('embedding_' + filesuffix + '.txt')
-        S_hat = self.get_reconst_from_embed(embed, node_l, filesuffix)
-        return graphify(S_hat)
+        D = sp.diags(A_.sum(axis=1).flatten().tolist()[0])
+        L = D - A_
+        return A, L
 
 
-if __name__ == '__main__':
-    G = nx.karate_club_graph()
-    G = G.to_directed()
-    res_pre = 'results/testKarate'
-    graph_util.print_graph_stats(G)
+if __name__ == "__main__":
+    # G = nx.read_edgelist('../../data/Wiki_edgelist.txt',
+    #                      create_using=nx.DiGraph(), nodetype=None, data=[('weight', int)])
+    G = nx.karate_club_graph().to_directed()
+    model = SDNE(G, hidden_size=[256, 128])
+    model.train(batch_size=256, epochs=1, verbose=2)
+    embeddings = model.get_embeddings()
 
-    t1 = time()
-    embedding = SDNE(d=2, beta=5, alpha=1e-5, nu1=1e-6, nu2=1e-6, K=3,
-                     n_units=[50, 15], rho=0.3, n_iter=50, xeta=0.01, n_batch=50,
-                     modelfile=None,
-                     weightfile=None)
-
-    embedding.learn_embedding(graph=G, edge_f=None, is_weighted=True, no_python=True)
-    print("SDNE: \n\tTraining time: %f" % (time() - t1))
-    plot_embeddings(G, embedding.get_embedding())
+    # evaluate_embeddings(embeddings)
+    # plot_embeddings(G, embeddings, path_file="../data/Wiki_labels.txt")

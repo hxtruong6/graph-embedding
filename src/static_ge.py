@@ -52,6 +52,9 @@ class StaticGE(object):
         X, L = inputs
         X_hat, Y = model(X)
 
+        # batch_size = X.shape[0]
+        #TODO: check if divide batch_size
+
         loss_1 = loss_1st(Y, L)
         loss_2 = loss_2nd(X_hat, X, beta)
         return loss_2 + alpha * loss_1
@@ -91,7 +94,7 @@ class StaticGE(object):
                     print(f"\tEpoch {epoch}: Loss = {mean_epoch_loss}")
                     losses.append(mean_epoch_loss)
 
-                    if epoch % 100 == 0:
+                    if epoch % 50 == 0:
                         plot_embedding(embedding[:max(500, embedding.shape[0]), :])
 
                 plot_losses(losses, title="Train GE", x_label="Epoch", y_label="Loss value")
@@ -121,5 +124,5 @@ if __name__ == "__main__":
     #     [5, 6, 0, 0, 0]
     # ])
     G = nx.from_numpy_matrix(S, create_using=nx.Graph)
-    ge = StaticGE(G=G, embedding_dim=64, hidden_dims=[128,256, 512])
-    ge.train(batch_size=64, epochs=400)
+    ge = StaticGE(G=G, embedding_dim=64, hidden_dims=[128, 256, 512])
+    ge.train(batch_size=64, epochs=101)
