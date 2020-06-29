@@ -5,6 +5,7 @@ import scipy.sparse as sparse
 
 from data_preprocessing.data_preprocessing import next_datasets, get_graph_from_file
 from utils.autoencoder import Autoencoder
+from utils.evaluate import evaluate_classify_embeddings
 from utils.visualize import plot_losses, plot_embedding
 
 
@@ -53,7 +54,7 @@ class StaticGE(object):
         X_hat, Y = model(X)
 
         # batch_size = X.shape[0]
-        #TODO: check if divide batch_size
+        # TODO: check if divide batch_size
 
         loss_1 = loss_1st(Y, L)
         loss_2 = loss_2nd(X_hat, X, beta)
@@ -106,7 +107,7 @@ class StaticGE(object):
         L = D - A
         return A, L
 
-    def get_embedding(self, inputs):
+    def get_embedding(self, inputs=None):
         if inputs is None:
             inputs = nx.adj_matrix(self.G).todense()
 
@@ -125,4 +126,6 @@ if __name__ == "__main__":
     # ])
     G = nx.from_numpy_matrix(S, create_using=nx.Graph)
     ge = StaticGE(G=G, embedding_dim=64, hidden_dims=[128, 256, 512])
-    ge.train(batch_size=64, epochs=101)
+    ge.train(batch_size=64, epochs=1)
+    embeddings = ge.get_embedding()
+    # evaluate_classify_embeddings(embeddings, label_file=None)

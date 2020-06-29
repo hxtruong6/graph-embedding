@@ -6,22 +6,12 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.layers import Dense, Input
 from tensorflow.python.keras.models import Model
 from tensorflow.python.keras.callbacks import History
-from sklearn.linear_model import LogisticRegression
 from tensorflow_core.python.keras.regularizers import l1_l2
 import numpy as np
 import scipy.sparse as sp
+
+from utils.evaluate import evaluate_classify_embeddings
 from utils.graph_util import preprocess_graph
-from utils.visualize import plot_embeddings, read_node_label
-
-from classify import Classifier
-
-
-def evaluate_embeddings(embeddings):
-    X, Y = read_node_label(filename="../../data/Wiki_labels.txt")
-    tr_frac = 0.8
-    print("Training classifier using {:.2f}% nodes...".format(tr_frac * 100))
-    clf = Classifier(embeddings=embeddings, clf=LogisticRegression())
-    clf.split_train_evaluate(X, Y, tr_frac)
 
 
 def create_model(node_size, hidden_size=[256, 128], l1=1e-5, l2=1e-4):
@@ -188,5 +178,5 @@ if __name__ == "__main__":
     model.train(batch_size=256, epochs=1, verbose=2)
     embeddings = model.get_embeddings()
 
-    # evaluate_embeddings(embeddings)
+    evaluate_classify_embeddings(embeddings, label_file="../../data/Wiki_labels.txt")
     # plot_embeddings(G, embeddings, path_file="../data/Wiki_labels.txt")
