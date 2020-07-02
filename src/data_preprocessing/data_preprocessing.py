@@ -1,3 +1,5 @@
+from os import listdir
+from os.path import isfile, join
 import networkx as nx
 import numpy as np
 import tensorflow as tf
@@ -37,3 +39,27 @@ def next_datasets(A, L, batch_size):
 
         yield i, batch_inp
         i += 1
+
+
+def read_dynamic_graph(folder_path=None, limit=None):
+    if folder_path is None:
+        raise ValueError("folder_path must be provided.")
+
+    graphs = []
+
+    files = [f for f in listdir(folder_path) if isfile(join(folder_path, f))]
+
+    for idx, file in enumerate(files):
+        if limit is not None and idx == limit:
+            break
+        G = get_graph_from_file(join(folder_path, file))
+        graphs.append(G)
+
+    return graphs
+
+
+if __name__ == "__main__":
+    graphs = read_dynamic_graph(folder_path="../../data/as-733", limit=10)
+    print(graphs)
+    for g in graphs:
+        print(nx.info(g))

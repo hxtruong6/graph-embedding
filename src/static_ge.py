@@ -5,7 +5,6 @@ import scipy.sparse as sparse
 
 from data_preprocessing.data_preprocessing import next_datasets, get_graph_from_file
 from utils.autoencoder import Autoencoder
-from utils.evaluate import evaluate_classify_embeddings
 from utils.visualize import plot_losses, plot_embedding
 
 
@@ -90,13 +89,14 @@ class StaticGE(object):
                                                         beta=self.beta)
                         epoch_loss.append(loss_values)
                     # tf.summary.scalar('loss', loss_values, step=epoch)
-                    embedding = self.model.get_embedding(S)
+                    # embedding = self.get_embedding()
                     mean_epoch_loss = np.mean(epoch_loss)
-                    print(f"\tEpoch {epoch}: Loss = {mean_epoch_loss}")
+                    if epoch % 5 == 0:
+                        print(f"\tEpoch {epoch}: Loss = {mean_epoch_loss}")
                     losses.append(mean_epoch_loss)
 
-                    if epoch % 50 == 0:
-                        plot_embedding(embedding[:max(500, embedding.shape[0]), :])
+                    # if epoch % 50 == 0:
+                    #     plot_embedding(embedding[:max(500, embedding.shape[0]), :])
 
                 plot_losses(losses, title="Train GE", x_label="Epoch", y_label="Loss value")
                 print(f"Loss = {losses[-1]}")

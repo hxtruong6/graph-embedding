@@ -1,6 +1,9 @@
 import networkx as nx
 import numpy as np
 
+from utils.alias import create_alias_table
+
+
 class GraphWalker:
     def __init__(self, G):
         self.G = G

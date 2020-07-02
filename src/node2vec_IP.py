@@ -9,7 +9,7 @@ from utils.graph_walker_ import GraphWalker
 from utils.skip_gram import SkipGram
 from utils.visualize import plot_embeddings
 
-
+# TODO: in processing
 class Node2Vec:
     def __init__(self, graph, walks_per_vertex, walk_length, p, q):
         """

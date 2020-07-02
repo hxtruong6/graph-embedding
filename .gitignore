@@ -114,3 +114,7 @@ dmypy.json
 .ipynb_checkpoints/
 
 */tmp/
+
+venv/
+
+.idea/
