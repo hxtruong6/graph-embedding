@@ -4,27 +4,27 @@ import pandas as pd
 import networkx as nx
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
-from munkres import Munkres, print_matrix
+from munkres import Munkres
 from sklearn.metrics.cluster import normalized_mutual_info_score as nmi_score
-from sklearn.metrics import adjusted_rand_score as ari_score, roc_auc_score
-from scipy.optimize import linear_sum_assignment as linear
+from sklearn.metrics import adjusted_rand_score as ari_score
 from sklearn import metrics
 import lightgbm as lgbm
-from node2vec import Node2Vec
+# from node2vec import Node2Vec
 
-from static_ge import StaticGE
+# from static_ge import StaticGE
 from utils.classify import Classifier
 from utils.visualize import read_node_label
 
 
-def evaluate_classify_embeddings(embeddings, label_file=None):
+def classify_embeddings_evaluate(embeddings, label_file=None, test_percent=0.25, seed=0):
     if label_file is None:
         raise ValueError("Must provide label_file name.")
-    X, Y = read_node_label(filename=label_file)
-    tr_frac = 0.8
-    print("Training classifier using {:.2f}% nodes...".format(tr_frac * 100))
+    X, Y = read_node_label(filename=label_file, skip_head=True)
+    print("Training classifier using {:.2f}% nodes...".format((1 - test_percent) * 100))
     clf = Classifier(embeddings=embeddings, clf=LogisticRegression())
-    clf.split_train_evaluate(X, Y, tr_frac)
+    X_train, X_test, y_train, y_test = train_test_split(X, Y, test_size=test_percent, random_state=seed, shuffle=True)
+    clf.train(X_train, y_train, Y)
+    return clf.evaluate(X_test, y_test)
 
 
 # https://github.com/bdy9527/SDCN
@@ -151,6 +151,7 @@ def run_evaluate(data, embedding, alg=None):
     # print(roc_auc_score(ytest, predictions))
 
 
+# https://www.analyticsvidhya.com/blog/2020/01/link-prediction-how-to-predict-your-future-connections-on-facebook/
 def link_predict_evaluate(G):
     G = nx.Graph(G)
     node_list_1 = []
@@ -204,20 +205,20 @@ def link_predict_evaluate(G):
     # build graph
     G_data = nx.from_pandas_edgelist(fb_df_partial, "node_1", "node_2", create_using=nx.Graph())
 
-    # SDNE
-    ge = StaticGE(G_data, embedding_dim=4, hidden_dims=[8])
-    ge.train(epochs=40)
-    embedding = ge.get_embedding()
-
-    run_evaluate(data, embedding)
-
-    # Node2vec
-    node2vec_model = Node2Vec(G_data, dimensions=4, walk_length=8, num_walks=50)
-
-    print("############")
-    # train node2vec model
-    n2w_model = node2vec_model.fit(window=7, min_count=1)
-    run_evaluate(data, n2w_model, alg="Node2Vec")
+    # # SDNE
+    # ge = StaticGE(G_data, embedding_dim=4, hidden_dims=[8])
+    # ge.train(epochs=40)
+    # embedding = ge.get_embedding()
+    #
+    # run_evaluate(data, embedding)
+    #
+    # # Node2vec
+    # node2vec_model = Node2Vec(G_data, dimensions=4, walk_length=8, num_walks=50)
+    #
+    # print("############")
+    # # train node2vec model
+    # n2w_model = node2vec_model.fit(window=7, min_count=1)
+    # run_evaluate(data, n2w_model, alg="Node2Vec")
 
 
 if __name__ == "__main__":

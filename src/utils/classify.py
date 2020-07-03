@@ -1,9 +1,11 @@
 from sklearn.metrics import f1_score, accuracy_score
+from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MultiLabelBinarizer
+from sklearn.multiclass import OneVsRestClassifier
 import numpy as np
 
 
-class TopKRanker(object):
+class TopKRanker(OneVsRestClassifier):
     def predict(self, X, top_k_list):
         probs = np.asarray(super(TopKRanker, self).predict_proba(X))
         all_labels = []
@@ -25,7 +27,7 @@ class Classifier(object):
         self.binarizer = MultiLabelBinarizer(sparse_output=True)
 
     def train(self, X, Y, Y_all):
-        self.binarizer.fit(Y_all)
+        self.binarizer.fit([Y_all])
         X_train = [self.embeddings[x] for x in X]
         Y = self.binarizer.transform(Y)
         self.clf.fit(X_train, Y)
@@ -49,19 +51,3 @@ class Classifier(object):
         X_ = np.asarray([self.embeddings[x] for x in X])
         Y = self.clf.predict(X_, top_k_list=top_k_list)
         return Y
-
-    def split_train_evaluate(self, X, Y, train_percent, seed=0):
-        state = np.random.get_state()
-
-        training_size = int(train_percent * len(X))
-        np.random.seed(seed)
-
-        shuffle_indices = np.random.permutation(np.arange(len(X)))
-        X_train = [X[shuffle_indices[i]] for i in range(training_size)]
-        Y_train = [Y[shuffle_indices[i]] for i in range(training_size)]
-        X_test = [X[shuffle_indices[i]] for i in range(training_size, len(X))]
-        Y_test = [Y[shuffle_indices[i]] for i in range(training_size, len(X))]
-
-        self.train(X_train, Y_train, Y)
-        np.random.set_state(state)
-        return self.evaluate(X_test, Y_test)

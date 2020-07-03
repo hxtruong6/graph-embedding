@@ -10,7 +10,7 @@ from tensorflow_core.python.keras.regularizers import l1_l2
 import numpy as np
 import scipy.sparse as sp
 
-from utils.evaluate import evaluate_classify_embeddings
+from utils.evaluate import classify_embeddings_evaluate
 from utils.graph_util import preprocess_graph
 
 
@@ -178,5 +178,5 @@ if __name__ == "__main__":
     model.train(batch_size=256, epochs=1, verbose=2)
     embeddings = model.get_embeddings()
 
-    evaluate_classify_embeddings(embeddings, label_file="../../data/Wiki_labels.txt")
+    classify_embeddings_evaluate(embeddings, label_file="../../data/Wiki_labels.txt")
     # plot_embeddings(G, embeddings, path_file="../data/Wiki_labels.txt")

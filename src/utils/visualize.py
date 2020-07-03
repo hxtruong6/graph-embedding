@@ -7,19 +7,15 @@ warnings.filterwarnings("ignore")
 
 
 def read_node_label(filename, skip_head=False):
-    fin = open(filename, 'r')
     X = []
     Y = []
-    while 1:
+    with open(filename) as fi:
         if skip_head:
-            fin.readline()
-        l = fin.readline()
-        if l == '':
-            break
-        vec = l.strip().split(' ')
-        X.append(vec[0])
-        Y.append(vec[1])
-    fin.close()
+            fi.readline()
+        for line in fi:
+            x, y = line.strip().split()
+            X.append(int(x))
+            Y.append(y)
     return X, Y
 
 
