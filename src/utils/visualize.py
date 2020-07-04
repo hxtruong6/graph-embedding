@@ -1,22 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.manifold import TSNE
-import warnings
 
-warnings.filterwarnings("ignore")
-
-
-def read_node_label(filename, skip_head=False):
-    X = []
-    Y = []
-    with open(filename) as fi:
-        if skip_head:
-            fi.readline()
-        for line in fi:
-            x, y = line.strip().split()
-            X.append(int(x))
-            Y.append(y)
-    return X, Y
+from data_preprocessing.data_preprocessing import read_node_label
 
 
 def plot_embeddings(graph, embeddings, path_file=None):

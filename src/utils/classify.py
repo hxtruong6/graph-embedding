@@ -27,7 +27,7 @@ class Classifier(object):
         self.binarizer = MultiLabelBinarizer(sparse_output=True)
 
     def train(self, X, Y, Y_all):
-        self.binarizer.fit([Y_all])
+        self.binarizer.fit(Y_all)
         X_train = [self.embeddings[x] for x in X]
         Y = self.binarizer.transform(Y)
         self.clf.fit(X_train, Y)

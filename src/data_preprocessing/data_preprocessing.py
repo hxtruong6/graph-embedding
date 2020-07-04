@@ -58,6 +58,19 @@ def read_dynamic_graph(folder_path=None, limit=None):
     return graphs
 
 
+def read_node_label(filename, skip_head=False):
+    X = []
+    Y = []
+    with open(filename) as fi:
+        if skip_head:
+            fi.readline()
+        for line in fi:
+            vec = line.strip().split()
+            X.append(int(vec[0]))
+            Y.append(vec[1:])
+    return X, Y
+
+
 if __name__ == "__main__":
     graphs = read_dynamic_graph(folder_path="../../data/as-733", limit=10)
     print(graphs)

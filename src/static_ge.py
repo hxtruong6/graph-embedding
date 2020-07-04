@@ -112,7 +112,7 @@ class StaticGE(object):
         if inputs is None:
             inputs = nx.adj_matrix(self.G).todense()
 
-        return list(self.model.get_embedding(inputs))
+        return self.model.get_embedding(inputs).numpy()
 
 
 if __name__ == "__main__":
@@ -128,7 +128,7 @@ if __name__ == "__main__":
     # G = nx.from_numpy_matrix(S, create_using=nx.Graph)
 
     G = get_graph_from_file(filename="../data/email-eu/email-Eu-core.txt")
-    ge = StaticGE(G=G, embedding_dim=4, hidden_dims=[64, 32])
-    ge.train(batch_size=64, epochs=10)
+    ge = StaticGE(G=G, embedding_dim=3, hidden_dims=[64, 32])
+    ge.train(batch_size=64, epochs=100)
     embeddings = ge.get_embedding()
     classify_embeddings_evaluate(embeddings, label_file="../data/email-eu/email-Eu-core-department-labels.txt")
