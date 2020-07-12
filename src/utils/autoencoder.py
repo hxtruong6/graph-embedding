@@ -12,13 +12,14 @@ class PartCoder(Layer):
         super(PartCoder, self).__init__()
         self.l1 = l1
         self.l2 = l2
+        self.seed = seed
         self.layers = []
         for i, dim in enumerate(hidden_dims):
             layer = Dense(
                 units=dim,
                 activation=tf.nn.relu,
                 kernel_regularizer=regularizers.l1_l2(l1=self.l1, l2=self.l2),
-                kernel_initializer=initializers.GlorotNormal(seed=6),
+                kernel_initializer=initializers.GlorotNormal(seed=self.seed),
                 bias_initializer=initializers.Zeros()
             )
             self.layers.append(layer)
@@ -42,6 +43,7 @@ class PartCoder(Layer):
             raise ValueError(
                 f"pos_layer is expected less than length of layers (pos_layer in [0, layers_size-2])")
 
+        # TODO: get biggest value to divide for new weights
         weights, bias = self.layers[pos_layer].get_weights()
         weights_next_layer, bias_next_layer = self.layers[pos_layer + 1].get_weights()
 
@@ -83,6 +85,7 @@ class PartCoder(Layer):
         weights, bias = self.layers[pos_layer].get_weights()
         new_weights, new_bias = net2deeper(weights)
         des_units = weights.shape[1]
+        # TODO: add initial kernel
         layer = Dense(
             units=des_units,
             activation=tf.nn.relu,
@@ -125,8 +128,42 @@ class PartCoder(Layer):
     def get_length_layers(self):
         return len(self.layers)
 
-    def replace_input_dim(self, input_dim):
-        pass
+    def begin_insert_layer(self):
+        # `self.layers[0].get_weights()` -> [weights, bias]
+        next_units = self.layers[0].get_weights()[0].shape[0]
+        layer = Dense(
+            units=next_units,
+            activation=tf.nn.relu,
+            kernel_regularizer=regularizers.l1_l2(l1=self.l1, l2=self.l2),
+            kernel_initializer=initializers.GlorotNormal(seed=self.seed),
+            bias_initializer=initializers.Zeros()
+        )
+        self.layers.insert(0, layer)
+
+    def last_insert_layer(self, layer_dim):
+        prev_weights, prev_bias = self.layers[len(self.layers) - 1].get_weights()
+        prev_units = prev_weights.shape[1]
+
+        replace_prev_layer = Dense(
+            units=prev_units,
+            activation=tf.nn.relu,
+            kernel_regularizer=regularizers.l1_l2(l1=self.l1, l2=self.l2),
+        )
+        replace_prev_layer.build(input_shape=(1, prev_weights.shape[0]))
+        replace_prev_layer.set_weights([prev_weights, prev_bias])
+
+        added_layer = Dense(
+            units=layer_dim,
+            activation=tf.nn.sigmoid,
+            kernel_regularizer=regularizers.l1_l2(l1=self.l1, l2=self.l2),
+            kernel_initializer=initializers.GlorotNormal(seed=self.seed),
+            bias_initializer=initializers.Zeros()
+        )
+        added_layer.build(input_shape=(1, prev_units))
+
+        del self.layers[len(self.layers) - 1]
+        self.layers.append(replace_prev_layer)
+        self.layers.append(added_layer)
 
 
 class Autoencoder(Model):
@@ -167,6 +204,10 @@ class Autoencoder(Model):
     def info(self, show_weight=False, show_config=False):
         self.encoder.info(show_weight, show_config)
         self.decoder.info(show_weight, show_config)
+
+    def expand_first_layer(self, layer_dim):
+        self.encoder.begin_insert_layer()
+        self.decoder.last_insert_layer(layer_dim=layer_dim)
 
 
 if __name__ == "__main__":
@@ -226,17 +267,28 @@ if __name__ == "__main__":
     # print("[Wider] y=", encoder(x))
     # encoder.info(show_weight=True, show_config=False)
 
+    # ------ Test autoencoder ---------
+    # ae = Autoencoder(input_dim=4, embedding_dim=2, hidden_dims=[3])
+    # X = np.random.rand(1, 4).astype(np.float32)
+    # X_hat, Y = ae(X)
+    # X_ = np.random.rand(5, 4).astype(np.float32)
+    # print(ae.get_embedding(inputs=X_))
+
+    # ---------------- Expand first layer AE -----------
     ae = Autoencoder(input_dim=4, embedding_dim=2, hidden_dims=[3])
     X = np.random.rand(1, 4).astype(np.float32)
     X_hat, Y = ae(X)
 
-    X_ = np.random.rand(5, 4).astype(np.float32)
-    print(ae.get_embedding(inputs=X_))
+    print("Before expand:")
+    ae.info(show_weight=True)
 
-    # p_layer = PartCoder(output_dim=2, hidden_dims=[5, 4])
-    # print(p_layer(X))
-    # print(p_layer.info(show_weight=True))
+    ae.expand_first_layer(layer_dim=6)
+    X_2 = np.random.rand(1, 6).astype(np.float32)
+    X_hat, Y = ae(X_2)
+    print("After expand:")
+    ae.info(show_weight=True)
 
+    # ------------------ Test wider deeper ------------
     # ae.info()
     # print("##### ----> Modify")
     # ae.wider(added_size=2)
