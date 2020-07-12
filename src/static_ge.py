@@ -10,23 +10,26 @@ from utils.visualize import plot_losses, plot_embedding
 
 
 class StaticGE(object):
-    def __init__(self, G, embedding_dim, hidden_dims, alpha=0.01, beta=2, nu1=0.001, nu2=0.001):
+    def __init__(self, G, embedding_dim, hidden_dims, model=None, alpha=0.01, beta=2, nu1=0.001, nu2=0.001):
         super(StaticGE, self).__init__()
         self.G = nx.Graph(G)
-        self.embedding_dim = embedding_dim
-        self.hidden_dims = hidden_dims
         self.alpha = alpha
         self.beta = beta
 
-        self.input_dim = self.G.number_of_nodes()
+        if model is None:
+            self.embedding_dim = embedding_dim
+            self.hidden_dims = hidden_dims
+            self.input_dim = self.G.number_of_nodes()
+            self.model = Autoencoder(
+                input_dim=self.input_dim,
+                embedding_dim=self.embedding_dim,
+                hidden_dims=self.hidden_dims,
+                v1=nu1,
+                v2=nu2
+            )
+        else:
+            self.model = model
 
-        self.model = Autoencoder(
-            input_dim=self.input_dim,
-            embedding_dim=self.embedding_dim,
-            hidden_dims=self.hidden_dims,
-            v1=nu1,
-            v2=nu2
-        )
         self.A, self.L = self.create_A_L_matrix()
 
     def compute_loss(self, model, inputs, alpha=0.01, beta=2):
@@ -60,7 +63,7 @@ class StaticGE(object):
         loss_2 = loss_2nd(X_hat, X, beta)
         return loss_2 + alpha * loss_1
 
-    def train(self, batch_size=1, epochs=10, learning_rate=0.003):
+    def train(self, batch_size=1, epochs=10, learning_rate=0.003, skip_print=5):
         def train_func(loss, model, opt, inputs, alpha, beta):
             with tf.GradientTape() as tape:
                 gradients = tape.gradient(
@@ -92,12 +95,9 @@ class StaticGE(object):
                     # tf.summary.scalar('loss', loss_values, step=epoch)
                     # embedding = self.get_embedding()
                     mean_epoch_loss = np.mean(epoch_loss)
-                    if epoch % 5 == 0:
+                    if epoch % skip_print == 0:
                         print(f"\tEpoch {epoch}: Loss = {mean_epoch_loss}")
                     losses.append(mean_epoch_loss)
-
-                    # if epoch % 50 == 0:
-                    #     plot_embedding(embedding[:max(500, embedding.shape[0]), :])
 
                 plot_losses(losses, title="Train GE", x_label="Epoch", y_label="Loss value")
                 print(f"Loss = {losses[-1]}")
@@ -114,6 +114,9 @@ class StaticGE(object):
 
         return self.model.get_embedding(inputs).numpy()
 
+    def get_model(self):
+        return self.model
+
 
 if __name__ == "__main__":
     # G_tmp = get_graph_from_file(filename="../data/ca-AstroPh.txt")
@@ -129,6 +132,6 @@ if __name__ == "__main__":
 
     G = get_graph_from_file(filename="../data/email-eu/email-Eu-core.txt")
     ge = StaticGE(G=G, embedding_dim=3, hidden_dims=[64, 32])
-    ge.train(batch_size=64, epochs=100)
+    ge.train(batch_size=64, epochs=10, skip_print=10)
     embeddings = ge.get_embedding()
     classify_embeddings_evaluate(embeddings, label_file="../data/email-eu/email-Eu-core-department-labels.txt")

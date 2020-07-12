@@ -118,3 +118,5 @@ dmypy.json
 venv/
 
 .idea/
+
+/data/cit-HepTh/
