@@ -10,7 +10,7 @@ from utils.visualize import plot_losses, plot_embedding
 
 
 class StaticGE(object):
-    def __init__(self, G, embedding_dim, hidden_dims, model=None, alpha=0.01, beta=2, nu1=0.001, nu2=0.001):
+    def __init__(self, G, embedding_dim=None, hidden_dims=[], model=None, alpha=0.01, beta=2, nu1=0.001, nu2=0.001):
         super(StaticGE, self).__init__()
         self.G = nx.Graph(G)
         self.alpha = alpha
@@ -95,8 +95,8 @@ class StaticGE(object):
                     # tf.summary.scalar('loss', loss_values, step=epoch)
                     # embedding = self.get_embedding()
                     mean_epoch_loss = np.mean(epoch_loss)
-                    if epoch % skip_print == 0:
-                        print(f"\tEpoch {epoch}: Loss = {mean_epoch_loss}")
+                    if (epoch+1) % skip_print == 0:
+                        print(f"\tEpoch {epoch + 1}: Loss = {mean_epoch_loss}")
                     losses.append(mean_epoch_loss)
 
                 plot_losses(losses, title="Train GE", x_label="Epoch", y_label="Loss value")

@@ -3,7 +3,7 @@ from utils.autoencoder import Autoencoder
 import networkx as nx
 
 
-def calculate_expand_size(prop_size=0.3):
+def calculate_expand_size(prop_size=0.3, prev_input_dim=None, input_dim=None):
     return False, 0, 0
 
 

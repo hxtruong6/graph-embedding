@@ -1,6 +1,6 @@
 import tensorflow as tf
 from tensorflow.keras.layers import Layer, Dense
-from tensorflow.keras import Model, regularizers
+from tensorflow.keras import Model, regularizers, initializers
 import numpy as np
 import json
 
@@ -8,7 +8,7 @@ from utils.net2net import net2wider, net2deeper
 
 
 class PartCoder(Layer):
-    def __init__(self, output_dim=2, hidden_dims=None, l1=0.01, l2=0.01):
+    def __init__(self, output_dim=2, hidden_dims=None, l1=0.01, l2=0.01, seed=6):
         super(PartCoder, self).__init__()
         self.l1 = l1
         self.l2 = l2
@@ -17,15 +17,19 @@ class PartCoder(Layer):
             layer = Dense(
                 units=dim,
                 activation=tf.nn.relu,
-                kernel_regularizer=regularizers.l1_l2(l1=self.l1, l2=self.l2)
+                kernel_regularizer=regularizers.l1_l2(l1=self.l1, l2=self.l2),
+                kernel_initializer=initializers.GlorotNormal(seed=6),
+                bias_initializer=initializers.Zeros()
             )
             self.layers.append(layer)
 
         # Final, adding output_layer (latent/reconstruction layer)
         self.layers.append(Dense(
             units=output_dim,
-            activation=tf.nn.relu,
-            kernel_regularizer=regularizers.l1_l2(l1=self.l1, l2=self.l2)
+            activation=tf.nn.sigmoid,
+            kernel_regularizer=regularizers.l1_l2(l1=self.l1, l2=self.l2),
+            kernel_initializer=initializers.GlorotNormal(seed=6),
+            bias_initializer=initializers.Zeros()
         ))
 
     def wider(self, added_size=1, pos_layer=None):
@@ -121,13 +125,16 @@ class PartCoder(Layer):
     def get_length_layers(self):
         return len(self.layers)
 
+    def replace_input_dim(self, input_dim):
+        pass
+
 
 class Autoencoder(Model):
     def __init__(self, input_dim, embedding_dim, hidden_dims=None, v1=0.01, v2=0.01):
         super(Autoencoder, self).__init__()
 
         if hidden_dims is None:
-            hidden_dims = [256, 512]
+            hidden_dims = [512, 128]
 
         self.encoder = PartCoder(output_dim=embedding_dim, hidden_dims=hidden_dims, l1=v1, l2=v2)
         self.decoder = PartCoder(output_dim=input_dim, hidden_dims=hidden_dims[::-1], l1=v1, l2=v2)
@@ -220,11 +227,18 @@ if __name__ == "__main__":
     # encoder.info(show_weight=True, show_config=False)
 
     ae = Autoencoder(input_dim=4, embedding_dim=2, hidden_dims=[3])
-    X = np.random.rand(2, 4)
+    X = np.random.rand(1, 4).astype(np.float32)
     X_hat, Y = ae(X)
 
-    ae.info()
-    print("##### ----> Modify")
-    ae.wider(added_size=2)
-    ae.deeper()
-    ae.info()
+    X_ = np.random.rand(5, 4).astype(np.float32)
+    print(ae.get_embedding(inputs=X_))
+
+    # p_layer = PartCoder(output_dim=2, hidden_dims=[5, 4])
+    # print(p_layer(X))
+    # print(p_layer.info(show_weight=True))
+
+    # ae.info()
+    # print("##### ----> Modify")
+    # ae.wider(added_size=2)
+    # ae.deeper()
+    # ae.info()
