@@ -7,26 +7,32 @@ import json
 from utils.net2net import net2wider, net2deeper
 
 
+# https://github.com/paulpjoby/DynGEM
 class PartCoder(Layer):
-    def __init__(self, output_dim=2, hidden_dims=None, l1=0.01, l2=0.01, seed=6):
+    def __init__(self, input_dim, output_dim=2, hidden_dims=None, l1=0.01, l2=0.01, seed=6):
         super(PartCoder, self).__init__()
         self.l1 = l1
         self.l2 = l2
         self.seed = seed
         self.layers = []
+
+        _input_dim = input_dim
         for i, dim in enumerate(hidden_dims):
             layer = Dense(
                 units=dim,
+                # input_shape=(_input_dim, dim),
                 activation=tf.nn.relu,
                 kernel_regularizer=regularizers.l1_l2(l1=self.l1, l2=self.l2),
                 kernel_initializer=initializers.GlorotNormal(seed=self.seed),
                 bias_initializer=initializers.Zeros()
             )
+            _input_dim = dim
             self.layers.append(layer)
 
         # Final, adding output_layer (latent/reconstruction layer)
         self.layers.append(Dense(
             units=output_dim,
+            # input_shape=(_input_dim, output_dim),
             activation=tf.nn.sigmoid,
             kernel_regularizer=regularizers.l1_l2(l1=self.l1, l2=self.l2),
             kernel_initializer=initializers.GlorotNormal(seed=6),
@@ -60,7 +66,7 @@ class PartCoder(Layer):
 
         # input_shape = (batch_size, input_features).
         # input_features = number of units in layer = length(layer) = output of previous layer
-        wider_layer.build(input_shape=(1, src_units))
+        wider_layer.build(input_shape=(None, src_units))
         wider_layer.set_weights([new_weights, new_bias])
 
         next_layer = Dense(
@@ -68,7 +74,7 @@ class PartCoder(Layer):
             activation=tf.nn.relu,
             kernel_regularizer=regularizers.l1_l2(l1=self.l1, l2=self.l2)
         )
-        next_layer.build(input_shape=(1, des_units))
+        next_layer.build(input_shape=(None, des_units))
         next_layer.set_weights([new_weights_next_layer, bias_next_layer])
 
         self.layers[pos_layer] = wider_layer
@@ -91,20 +97,27 @@ class PartCoder(Layer):
             activation=tf.nn.relu,
             kernel_regularizer=regularizers.l1_l2(l1=self.l1, l2=self.l2),
         )
-        layer.build(input_shape=(1, des_units))
+        layer.build(input_shape=(None, des_units))
         layer.set_weights([new_weights, new_bias])
 
         self.layers.insert(pos_layer + 1, layer)
 
-    def set_dump_weight(self):
+    def set_dump_weight(self, dum_weight=None):
         for i in range(len(self.layers)):
             w, b = self.layers[i].get_weights()
 
             for u in range(w.shape[0]):
                 for v in range(w.shape[1]):
-                    w[u][v] = u * w.shape[1] + v
+                    if dum_weight is None:
+                        w[u][v] = u * w.shape[1] + v
+                    else:
+                        w[u][v] = dum_weight
             for v in range(b.shape[0]):
                 b[v] = v
+                if dum_weight is None:
+                    b[v] = v
+                else:
+                    b[v] = dum_weight
 
             self.layers[i].set_weights([w, b])
 
@@ -128,7 +141,7 @@ class PartCoder(Layer):
     def get_length_layers(self):
         return len(self.layers)
 
-    def begin_insert_layer(self):
+    def begin_insert_layer(self, layer_dim):
         # `self.layers[0].get_weights()` -> [weights, bias]
         next_units = self.layers[0].get_weights()[0].shape[0]
         layer = Dense(
@@ -138,6 +151,7 @@ class PartCoder(Layer):
             kernel_initializer=initializers.GlorotNormal(seed=self.seed),
             bias_initializer=initializers.Zeros()
         )
+        layer.build(input_shape=(None, layer_dim))
         self.layers.insert(0, layer)
 
     def last_insert_layer(self, layer_dim):
@@ -149,7 +163,7 @@ class PartCoder(Layer):
             activation=tf.nn.relu,
             kernel_regularizer=regularizers.l1_l2(l1=self.l1, l2=self.l2),
         )
-        replace_prev_layer.build(input_shape=(1, prev_weights.shape[0]))
+        replace_prev_layer.build(input_shape=(None, prev_weights.shape[0]))
         replace_prev_layer.set_weights([prev_weights, prev_bias])
 
         added_layer = Dense(
@@ -159,22 +173,55 @@ class PartCoder(Layer):
             kernel_initializer=initializers.GlorotNormal(seed=self.seed),
             bias_initializer=initializers.Zeros()
         )
-        added_layer.build(input_shape=(1, prev_units))
+        added_layer.build(input_shape=(None, prev_units))
 
         del self.layers[len(self.layers) - 1]
         self.layers.append(replace_prev_layer)
         self.layers.append(added_layer)
 
+    def get_layers_size(self):
+        layers_size = []
+        for layer in self.layers:
+            weights, _ = layer.get_weights()
+            layers_size.append(weights.shape)
+        # print("layer_size: ", layers_size)
+        return layers_size
+
+    def get_weights(self):
+        '''
+
+        :return: [[weights, bias],[],...]
+        '''
+        layer_weights = []
+        for layer in self.layers:
+            layer_weights.append(layer.get_weights())
+        return layer_weights
+
+    def set_weights(self, weights):
+        '''
+
+        :param weights: [[weights, bias],[],...]
+        :return:
+        '''
+        for i in range(0, len(self.layers)):
+            # self.layers[i].build(input_shape=(None, weights[i][0].shape[1]))
+            if not self.layers[i].get_weights():
+                self.layers[i].build(input_shape=(None, len(weights[i][0])))
+            self.layers[i].set_weights(weights[i])
+
 
 class Autoencoder(Model):
     def __init__(self, input_dim, embedding_dim, hidden_dims=None, v1=0.01, v2=0.01):
         super(Autoencoder, self).__init__()
+        self.input_dim = input_dim
+        self.embedding_dim = embedding_dim
 
         if hidden_dims is None:
             hidden_dims = [512, 128]
 
-        self.encoder = PartCoder(output_dim=embedding_dim, hidden_dims=hidden_dims, l1=v1, l2=v2)
-        self.decoder = PartCoder(output_dim=input_dim, hidden_dims=hidden_dims[::-1], l1=v1, l2=v2)
+        self.encoder = PartCoder(input_dim=input_dim, output_dim=embedding_dim, hidden_dims=hidden_dims, l1=v1, l2=v2)
+        self.decoder = PartCoder(input_dim=embedding_dim, output_dim=input_dim, hidden_dims=hidden_dims[::-1], l1=v1,
+                                 l2=v2)
 
     def wider(self, added_size=1, pos_layer=None):
         if pos_layer is None:
@@ -206,8 +253,34 @@ class Autoencoder(Model):
         self.decoder.info(show_weight, show_config)
 
     def expand_first_layer(self, layer_dim):
-        self.encoder.begin_insert_layer()
+        self.encoder.begin_insert_layer(layer_dim=layer_dim)
         self.decoder.last_insert_layer(layer_dim=layer_dim)
+
+    def get_layers_size(self):
+        '''
+        Return size of the encoder layers part. Suppose layers of decoder has same size as the encoder
+        :return: layers size of encoder part
+        '''
+        return self.encoder.get_layers_size()
+
+    def get_input_dim(self):
+        return self.input_dim
+
+    def set_dum_weight(self, dum_weight):
+        self.encoder.set_dump_weight(dum_weight)
+        self.decoder.set_dump_weight(dum_weight)
+
+    def get_weights(self):
+        '''
+        Return a list of layer weights in the total of model
+        :return: [[encoder_layer_weights],[decoder_layer_weights]]
+        '''
+        return [self.encoder.get_weights(), self.decoder.get_weights()]
+
+    def set_weight(self, weights):
+        encoder_weights, decoder_weights = weights
+        self.encoder.set_weights(encoder_weights)
+        self.decoder.set_weights(decoder_weights)
 
 
 if __name__ == "__main__":
@@ -279,14 +352,15 @@ if __name__ == "__main__":
     X = np.random.rand(1, 4).astype(np.float32)
     X_hat, Y = ae(X)
 
-    print("Before expand:")
-    ae.info(show_weight=True)
+    # print("Before expand:")
+    # ae.info(show_weight=True)
 
     ae.expand_first_layer(layer_dim=6)
     X_2 = np.random.rand(1, 6).astype(np.float32)
     X_hat, Y = ae(X_2)
-    print("After expand:")
-    ae.info(show_weight=True)
+    # print("After expand:")
+    # ae.info(show_weight=True)
+    print(ae.get_layers_size())
 
     # ------------------ Test wider deeper ------------
     # ae.info()

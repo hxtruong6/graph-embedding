@@ -10,7 +10,8 @@ from utils.visualize import plot_losses, plot_embedding
 
 
 class StaticGE(object):
-    def __init__(self, G, embedding_dim=None, hidden_dims=[], model=None, alpha=0.01, beta=2, nu1=0.001, nu2=0.001):
+    def __init__(self, G, embedding_dim=None, hidden_dims=[], model: Autoencoder = None, alpha=0.01, beta=2, nu1=0.001,
+                 nu2=0.001):
         super(StaticGE, self).__init__()
         self.G = nx.Graph(G)
         self.alpha = alpha
@@ -63,7 +64,7 @@ class StaticGE(object):
         loss_2 = loss_2nd(X_hat, X, beta)
         return loss_2 + alpha * loss_1
 
-    def train(self, batch_size=1, epochs=10, learning_rate=0.003, skip_print=5):
+    def train(self, batch_size=1, epochs=1, learning_rate=0.003, skip_print=5):
         def train_func(loss, model, opt, inputs, alpha, beta):
             with tf.GradientTape() as tape:
                 gradients = tape.gradient(
@@ -80,7 +81,7 @@ class StaticGE(object):
         losses = []
 
         # datasets = get_transform(self.tf_dataset, batch_size=1, prefetch_times=1, shuffle=False)
-        tf.keras.backend.clear_session()
+        # tf.keras.backend.clear_session()
         opt = tf.optimizers.Adam(learning_rate=learning_rate)
         with writer.as_default():
             with tf.summary.record_if(True):
@@ -95,7 +96,7 @@ class StaticGE(object):
                     # tf.summary.scalar('loss', loss_values, step=epoch)
                     # embedding = self.get_embedding()
                     mean_epoch_loss = np.mean(epoch_loss)
-                    if (epoch+1) % skip_print == 0:
+                    if (epoch + 1) % skip_print == 0:
                         print(f"\tEpoch {epoch + 1}: Loss = {mean_epoch_loss}")
                     losses.append(mean_epoch_loss)
 
@@ -117,6 +118,18 @@ class StaticGE(object):
     def get_model(self):
         return self.model
 
+
+    # def save_model(self, filepath=None):
+    #     if filepath is None:
+    #         raise ValueError("filepath must be not None")
+    #     self.model._set_inputs(nx.adj_matrix(self.G).todense()[:1])
+    #     self.model.save(filepath="./")
+    #     # tf.keras.models.save_model(self.model, filepath=filepath)
+    #
+    # def load_model(self, filepath=None):
+    #     if filepath is None:
+    #         raise ValueError("filepath must be not None")
+    #     self.model = tf.keras.models.load_model(filepath)
 
 if __name__ == "__main__":
     # G_tmp = get_graph_from_file(filename="../data/ca-AstroPh.txt")
