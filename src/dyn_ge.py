@@ -19,34 +19,34 @@ def get_hidden_layer(prop_size, input_dim, embedding_dim):
     return hidden_dims
 
 
-def handle_expand_model(model: Autoencoder, input_dim, prop_size=0.3):
+def handle_expand_model(model: Autoencoder, input_dim, net2net_applied=False, prop_size=0.3):
     if input_dim == model.get_input_dim():
         return model
 
     # NOTE: suppose just for addition nodes to graph
     model.expand_first_layer(layer_dim=input_dim)
-    return model
 
-    # layers_size = model.get_layers_size()
-    #
-    # # TODO: check last size is added or which layer ?
-    # index = 0
-    # while index < len(layers_size) - 1:
-    #     layer_1_dim, layer_2_dim = layers_size[index]
-    #     if ceil(layer_1_dim * prop_size) > layer_2_dim:
-    #         # the prev layer before embedding layer
-    #         # if index == len(layers_size) - 2:
-    #         #     model.deeper(pos_layer=index)
-    #         #     # model.info()
-    #         # else:
-    #         added_size = ceil(layer_1_dim * prop_size) - layer_2_dim
-    #         model.wider(added_size=added_size, pos_layer=index)
-    #         index += 1
-    #     else:
-    #         index += 1
-    #     layers_size = model.get_layers_size()
-    #
-    # return model
+    if net2net_applied is False:
+        return model
+
+    layers_size = model.get_layers_size()
+    index = 0
+    while index < len(layers_size) - 1:
+        layer_1_dim, layer_2_dim = layers_size[index]
+        suitable_dim = ceil(layer_1_dim * prop_size)
+        if suitable_dim > layer_2_dim:
+            # the prev layer before embedding layer
+            if index == len(layers_size) - 2:
+                model.deeper(pos_layer=index)
+                # model.info()
+            else:
+                added_size = suitable_dim - layer_2_dim
+                model.wider(added_size=added_size, pos_layer=index)
+                index += 1
+        else:
+            index += 1
+        layers_size = model.get_layers_size()
+    return model
 
 
 def save_weights_model(weights, filepath):
@@ -96,7 +96,8 @@ class DynGE(object):
             raise ValueError("index is invalid!")
         return self.static_ges[index].get_embedding()
 
-    def train(self, prop_size=0.4, batch_size=64, epochs=100, filepath="../models/", skip_print=5):
+    def train(self, prop_size=0.4, batch_size=64, epochs=100, filepath="../models/", skip_print=5,
+              net2net_applied=False):
         init_hidden_dims = get_hidden_layer(prop_size=prop_size, input_dim=len(self.graphs[0].nodes()),
                                             embedding_dim=self.embedding_dim)
         # print(init_hidden_dims)
@@ -114,6 +115,7 @@ class DynGE(object):
         self.model_weight_paths.append(join(filepath, "graph_0.json"))
         save_weights_model(weights=ge.get_model().get_weights(), filepath=self.model_weight_paths[0])
         # print("Model_0: ", model.get_weights())
+        print(model.get_layers_size())
 
         for i in range(1, len(self.graphs)):
             graph = nx.Graph(self.graphs[i])
@@ -122,7 +124,8 @@ class DynGE(object):
             # print(f"Model_{i}:{prev_model.get_weights()}")
             # prev_model.info()
             curr_model = handle_expand_model(model=prev_model, input_dim=input_dim,
-                                             prop_size=prop_size)
+                                             prop_size=prop_size, net2net_applied=net2net_applied)
+            print(curr_model.get_layers_size())
             ge = StaticGE(G=graph, model=curr_model)
 
             ge.train(batch_size=batch_size, epochs=epochs, skip_print=skip_print)
@@ -150,10 +153,10 @@ class DynGE(object):
 
 if __name__ == "__main__":
     g1 = nx.complete_graph(100)
-    g2 = nx.complete_graph(180)
+    g2 = nx.complete_graph(220)
     graphs = [g1, g2]
     dy_ge = DynGE(graphs=graphs, embedding_dim=2)
-    dy_ge.train(prop_size=0.5, epochs=200, skip_print=20)
+    dy_ge.train(prop_size=0.5, epochs=100, skip_print=20, net2net_applied=False)
     embeddings = dy_ge.get_all_embeddings()
     for e in embeddings:
         plot_embedding(embedding=e)
