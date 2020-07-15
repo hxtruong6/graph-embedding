@@ -4,6 +4,8 @@ from tensorflow.keras import Model, regularizers, initializers
 import numpy as np
 import json
 
+from tensorflow.python.training.tracking.data_structures import NoDependency
+
 from utils.net2net import net2wider, net2deeper
 
 
@@ -14,30 +16,33 @@ class PartCoder(Layer):
         self.l1 = l1
         self.l2 = l2
         self.seed = seed
+        # self.layers = NoDependency([])
+        # self.__dict__['layers'] = []
         self.layers = []
 
         _input_dim = input_dim
         for i, dim in enumerate(hidden_dims):
             layer = Dense(
                 units=dim,
-                # input_shape=(_input_dim, dim),
                 activation=tf.nn.relu,
                 kernel_regularizer=regularizers.l1_l2(l1=self.l1, l2=self.l2),
                 kernel_initializer=initializers.GlorotNormal(seed=self.seed),
                 bias_initializer=initializers.Zeros()
             )
+            layer.build(input_shape=(None, _input_dim))
             _input_dim = dim
             self.layers.append(layer)
 
         # Final, adding output_layer (latent/reconstruction layer)
-        self.layers.append(Dense(
+        layer = Dense(
             units=output_dim,
-            # input_shape=(_input_dim, output_dim),
             activation=tf.nn.sigmoid,
             kernel_regularizer=regularizers.l1_l2(l1=self.l1, l2=self.l2),
             kernel_initializer=initializers.GlorotNormal(seed=6),
             bias_initializer=initializers.Zeros()
-        ))
+        )
+        layer.build(input_shape=(None, _input_dim))
+        self.layers.append(layer)
 
     def wider(self, added_size=1, pos_layer=None):
         layers_size = len(self.layers)
@@ -219,9 +224,15 @@ class Autoencoder(Model):
         if hidden_dims is None:
             hidden_dims = [512, 128]
 
-        self.encoder = PartCoder(input_dim=input_dim, output_dim=embedding_dim, hidden_dims=hidden_dims, l1=v1, l2=v2)
-        self.decoder = PartCoder(input_dim=embedding_dim, output_dim=input_dim, hidden_dims=hidden_dims[::-1], l1=v1,
-                                 l2=v2)
+        self.hidden_dims = hidden_dims
+        self.l1 = v1
+        self.l2 = v2
+
+        self.encoder = PartCoder(input_dim=input_dim, output_dim=embedding_dim, hidden_dims=hidden_dims, l1=self.l1,
+                                 l2=self.l2)
+        self.decoder = PartCoder(input_dim=embedding_dim, output_dim=input_dim, hidden_dims=hidden_dims[::-1],
+                                 l1=self.l1,
+                                 l2=self.l2)
 
     def wider(self, added_size=1, pos_layer=None):
         if pos_layer is None:
@@ -253,8 +264,10 @@ class Autoencoder(Model):
         self.decoder.info(show_weight, show_config)
 
     def expand_first_layer(self, layer_dim):
+        self.input_dim = layer_dim
         self.encoder.begin_insert_layer(layer_dim=layer_dim)
         self.decoder.last_insert_layer(layer_dim=layer_dim)
+        self.hidden_dims = self.get_hidden_dims()
 
     def get_layers_size(self):
         '''
@@ -270,17 +283,35 @@ class Autoencoder(Model):
         self.encoder.set_dump_weight(dum_weight)
         self.decoder.set_dump_weight(dum_weight)
 
-    def get_weights(self):
+    def get_weights_model(self):
         '''
         Return a list of layer weights in the total of model
         :return: [[encoder_layer_weights],[decoder_layer_weights]]
         '''
         return [self.encoder.get_weights(), self.decoder.get_weights()]
 
-    def set_weight(self, weights):
+    def set_weights_model(self, weights):
         encoder_weights, decoder_weights = weights
         self.encoder.set_weights(encoder_weights)
         self.decoder.set_weights(decoder_weights)
+
+    def get_config_layer(self):
+        config_layer = {
+            "input_dim": self.input_dim,
+            "embedding_dim": self.embedding_dim,
+            "hidden_dims": self.hidden_dims,
+            "l1": self.l1,
+            "l2": self.l2
+        }
+        return config_layer
+
+    def get_hidden_dims(self):
+        hidden_dims = []
+        for i, (l1, l2) in enumerate(self.get_layers_size()):
+            if i == 0:
+                continue
+            hidden_dims.append(l1)
+        return hidden_dims
 
 
 if __name__ == "__main__":
