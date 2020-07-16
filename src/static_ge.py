@@ -147,5 +147,5 @@ if __name__ == "__main__":
     ge = StaticGE(G=G, embedding_dim=3, hidden_dims=[64, 32])
     ge.train(batch_size=64, epochs=300, skip_print=10, learning_rate=0.001)
     embeddings = ge.get_embedding()
-    classify_embeddings_evaluate(embeddings, label_file="../data/email-eu/email-Eu-core-department-labels.txt")
+    # classify_embeddings_evaluate(embeddings, label_file="../data/email-eu/email-Eu-core-department-labels.txt")
     plot_embeddings_with_labels(G, embeddings=embeddings, path_file="../data/email-eu/email-Eu-core-department-labels.txt")
