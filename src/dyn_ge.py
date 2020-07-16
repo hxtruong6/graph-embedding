@@ -110,20 +110,18 @@ def get_hidden_dims(layers_size):
 
 
 class DynGE(object):
-    def __init__(self, graphs, embedding_dim, init_hidden_dims=None, v1=0.001, v2=0.001):
+    def __init__(self, graphs, embedding_dim, v1=0.001, v2=0.001):
         super(DynGE, self).__init__()
-        if init_hidden_dims is None:
-            init_hidden_dims = []
+        if not graphs:
+            raise ValueError("Must be provide graphs data")
+
         self.graphs = graphs
         self.graph_len = len(graphs)
         self.embedding_dim = embedding_dim
-        self.init_hidden_dims = init_hidden_dims
         self.v1 = v1
         self.v2 = v2
         self.static_ges = []
-        self.model_weight_paths = []
         self.model_folder_paths = []
-        # self.models = []
 
     def get_all_embeddings(self):
         return [ge.get_embedding() for ge in self.static_ges]
@@ -133,7 +131,7 @@ class DynGE(object):
             raise ValueError("index is invalid!")
         return self.static_ges[index].get_embedding()
 
-    def train(self, prop_size=0.4, batch_size=64, epochs=100, filepath="../models/", skip_print=5,
+    def train(self, prop_size=0.4, batch_size=64, epochs=100, filepath="../models/generate/", skip_print=5,
               net2net_applied=False, learning_rate=0.003):
         init_hidden_dims = get_hidden_layer(prop_size=prop_size, input_dim=len(self.graphs[0].nodes()),
                                             embedding_dim=self.embedding_dim)
@@ -174,14 +172,52 @@ class DynGE(object):
         model = load_custom_model(self.model_folder_paths[index])
         return model
 
+    def load_models(self, folder_path):
+        model_folders_paths = os.listdir(folder_path)
+        self.model_folder_paths = []
+        self.static_ges = []
+        for i, folder in enumerate(model_folders_paths):
+            model_folder_path = {
+                'folder_path': join(folder_path, folder),
+                'name': folder
+            }
+            model = load_custom_model(model_folder_path=model_folder_path)
+            self.model_folder_paths.append(model_folder_path)
+
+            ge = StaticGE(G=self.graphs[i], model=model)
+            self.static_ges.append(ge)
+
+    def train_from_checkpoint(self, folder_path, batch_size=64, epochs=10, skip_print=10, learning_rate=0.001,
+                              filepath=None):
+        self.load_models(folder_path=folder_path)
+        if filepath is None:
+            filepath = folder_path
+
+        for i in range(self.graph_len):
+            self.static_ges[i].train(batch_size=batch_size, epochs=epochs, skip_print=skip_print,
+                                     learning_rate=learning_rate)
+
+            model_folder_path = {
+                "folder_path": join(filepath, f"graph_{i}"),
+                "name": f"graph_{i}"
+            }
+            save_custom_model(model=self.static_ges[i].get_model(), model_folder_path=model_folder_path)
+
 
 if __name__ == "__main__":
     g1 = nx.complete_graph(100)
     g2 = nx.complete_graph(150)
     g3 = nx.complete_graph(180)
-    graphs = [g1, g2, g3]
+    graphs = [g1, g1, g1]
     dy_ge = DynGE(graphs=graphs, embedding_dim=4)
-    dy_ge.train(prop_size=0.4, epochs=200, skip_print=20, net2net_applied=False, learning_rate=0.0005)
+    # dy_ge.train(prop_size=0.4, epochs=300, skip_print=30, net2net_applied=False, learning_rate=0.0005,
+    #             filepath="../models/generate/")
+    dy_ge.load_models(folder_path="../models/generate")
+    # dy_ge.train_from_checkpoint(folder_path="../models/generate/", filepath="../models/checkpoints_1", epochs=200,
+    #                             skip_print=20, learning_rate=0.00005)
+
     embeddings = dy_ge.get_all_embeddings()
     for e in embeddings:
         plot_embedding(embedding=e)
+
+

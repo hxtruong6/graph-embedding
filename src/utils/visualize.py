@@ -5,7 +5,7 @@ from sklearn.manifold import TSNE
 from data_preprocessing.data_preprocessing import read_node_label
 
 
-def plot_embeddings(graph, embeddings, path_file=None):
+def plot_embeddings_with_labels(graph, embeddings, path_file=None):
     emb_list = []
 
     X = []
@@ -27,8 +27,8 @@ def plot_embeddings(graph, embeddings, path_file=None):
 
     color_idx = {}
     for i in range(len(X)):
-        color_idx.setdefault(Y[i], [])
-        color_idx[Y[i]].append(i)
+        color_idx.setdefault(Y[i][0], [])
+        color_idx[Y[i][0]].append(i)
 
     for c, idx in color_idx.items():
         plt.scatter(node_pos[idx, 0], node_pos[idx, 1], label=c)

@@ -3,7 +3,7 @@ import networkx as nx
 from gensim.test.utils import get_tmpfile
 
 from utils.skip_gram import SkipGram
-from utils.visualize import plot_embeddings
+from utils.visualize import plot_embeddings_with_labels
 from utils.graph_walker_ import GraphWalker
 
 
@@ -52,7 +52,7 @@ if __name__ == "__main__":
         model = DeepWalk(G, walks_per_vertex=20, walk_length=10)
         model.train(embedding_size=128, window_size=5)
         embeddings = model.get_embedding()
-        plot_embeddings(G, embeddings, path_file="../data/Wiki_category.txt")
+        plot_embeddings_with_labels(G, embeddings, path_file="../data/Wiki_category.txt")
 
     # Test 2
     if test_num == 2:
@@ -61,4 +61,4 @@ if __name__ == "__main__":
         model = DeepWalk(G, walks_per_vertex=20, walk_length=10)
         model.train(embedding_size=128, window_size=5)
         embeddings = model.get_embedding()
-        plot_embeddings(G, embeddings)
+        plot_embeddings_with_labels(G, embeddings)

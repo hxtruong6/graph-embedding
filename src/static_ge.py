@@ -6,7 +6,7 @@ import scipy.sparse as sparse
 from data_preprocessing.data_preprocessing import next_datasets, get_graph_from_file
 from utils.autoencoder import Autoencoder
 from utils.evaluate import classify_embeddings_evaluate
-from utils.visualize import plot_losses, plot_embedding
+from utils.visualize import plot_losses, plot_embedding, plot_embeddings_with_labels
 
 
 class StaticGE(object):
@@ -145,6 +145,7 @@ if __name__ == "__main__":
 
     G = get_graph_from_file(filename="../data/email-eu/email-Eu-core.txt")
     ge = StaticGE(G=G, embedding_dim=3, hidden_dims=[64, 32])
-    ge.train(batch_size=64, epochs=10, skip_print=10)
+    ge.train(batch_size=64, epochs=300, skip_print=10, learning_rate=0.001)
     embeddings = ge.get_embedding()
     classify_embeddings_evaluate(embeddings, label_file="../data/email-eu/email-Eu-core-department-labels.txt")
+    plot_embeddings_with_labels(G, embeddings=embeddings, path_file="../data/email-eu/email-Eu-core-department-labels.txt")
