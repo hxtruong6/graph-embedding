@@ -33,7 +33,7 @@ def get_unconnected_pairs(G: nx.Graph):
     return all_unconnected_pairs
 
 
-def run_evaluate(data, embedding, alg=None, num_boost_round=1000, early_stopping_rounds=20):
+def run_evaluate(data, embedding, alg=None, num_boost_round=10000, early_stopping_rounds=40):
     if alg == "Node2Vec":
         x = [(embedding[str(i)] + embedding[str(j)]) for i, j in zip(data['node_1'], data['node_2'])]
     else:
@@ -68,15 +68,37 @@ def run_evaluate(data, embedding, alg=None, num_boost_round=1000, early_stopping
     model = lgbm.train(parameters,
                        train_data,
                        valid_sets=test_data,
-                       num_boost_round=100000,
-                       early_stopping_rounds=20,
+                       num_boost_round=num_boost_round,
+                       early_stopping_rounds=early_stopping_rounds,
                        verbose_eval=10,
                        )
 
     y_pred = model.predict(X_test)
-    print("#----\nROC AUC Score: ", roc_auc_score(y_test, y_pred, average=None))
+    print(f"#----\nROC AUC Score: {round(roc_auc_score(y_test, y_pred, average=None), 2)}")
     # roc_curve(y_test, y_pred)
     return model
+
+
+def top_k_prediction_edges(G, y_pred, possible_edges_df, top_k, show_acc_on_edge=False):
+    # get top K link prediction
+    # sorted_y_pred, sorted_possible_edges = zip(*sorted(zip(y_pred, possible_egdes)))
+    node_1 = possible_edges_df['node_1'].to_list()
+    node_2 = possible_edges_df['node_2'].to_list()
+
+    # unconnected_edges = [possible_egdes_df['node_1'].to_list(), possible_egdes_df['node_2'].to_list()]
+    unconnected_edges = [(node_1[i], node_2[i]) for i in range(len(node_1))]
+    sorted_y_pred, sorted_possible_edges = (list(t) for t in zip(*sorted(zip(y_pred, unconnected_edges), reverse=True)))
+
+    print(f"Top {top_k} predicted edges: edge|accuracy")
+    for i in range(top_k):
+        print(f"{sorted_possible_edges[i]} : {round(sorted_y_pred[i], 2)}")
+
+    if show_acc_on_edge:
+        plot_link_prediction_graph(G=G, pred_edges=sorted_possible_edges[:top_k], pred_acc=sorted_y_pred[:top_k])
+    else:
+        plot_link_prediction_graph(G=G, pred_edges=sorted_possible_edges[:top_k])
+
+    return sorted_possible_edges[:top_k], sorted_y_pred[:top_k]
 
 
 def run_predict(data, embedding, model):
@@ -154,7 +176,7 @@ def link_predict_evaluate(G: nx.Graph):
     # run_evaluate(data, n2w_model, alg="Node2Vec")
 
 
-def preprocessing_graph(G: nx.Graph):
+def preprocessing_graph_for_link_prediction(G: nx.Graph):
     node_list_1 = [u for u, _ in G.edges]
     node_list_2 = [v for _, v in G.edges]
     graph_df = pd.DataFrame({'node_1': node_list_1, 'node_2': node_list_2})
@@ -184,6 +206,7 @@ def preprocessing_graph(G: nx.Graph):
     removed_edge_graph_df['link'] = 1
 
     data = data.append(removed_edge_graph_df[['node_1', 'node_2', 'link']], ignore_index=True)
+    data = data.astype(int)
 
     # drop removable edges
     graph_df_partial = graph_df.drop(index=removed_edge_graph_df.index.values)
