@@ -79,7 +79,7 @@ def run_evaluate(data, embedding, alg=None, num_boost_round=10000, early_stoppin
     return model
 
 
-def top_k_prediction_edges(G, y_pred, possible_edges_df, top_k, show_acc_on_edge=False):
+def top_k_prediction_edges(G, y_pred, possible_edges_df, top_k, show_acc_on_edge=False, plot_link_pred=False):
     # get top K link prediction
     # sorted_y_pred, sorted_possible_edges = zip(*sorted(zip(y_pred, possible_egdes)))
     node_1 = possible_edges_df['node_1'].to_list()
@@ -93,10 +93,11 @@ def top_k_prediction_edges(G, y_pred, possible_edges_df, top_k, show_acc_on_edge
     for i in range(top_k):
         print(f"{sorted_possible_edges[i]} : {round(sorted_y_pred[i], 2)}")
 
-    if show_acc_on_edge:
-        plot_link_prediction_graph(G=G, pred_edges=sorted_possible_edges[:top_k], pred_acc=sorted_y_pred[:top_k])
-    else:
-        plot_link_prediction_graph(G=G, pred_edges=sorted_possible_edges[:top_k])
+    if plot_link_pred:
+        if show_acc_on_edge:
+            plot_link_prediction_graph(G=G, pred_edges=sorted_possible_edges[:top_k], pred_acc=sorted_y_pred[:top_k])
+        else:
+            plot_link_prediction_graph(G=G, pred_edges=sorted_possible_edges[:top_k])
 
     return sorted_possible_edges[:top_k], sorted_y_pred[:top_k]
 

@@ -89,13 +89,13 @@ def ciHepTH_link_prediction(G: nx.Graph, epochs=10, top_k=10, show_acc_on_edge=F
 
 
 if __name__ == "__main__":
-    # graphs = handle_citHepTH_dataset(
-    #     edge_list_path="../data/cit-HepTh/cit-HepTh.txt",
-    #     abstract_path="../data/cit-HepTh/cit-HepTh-abstracts/",
-    #     verbose=False
-    # )
+    graphs = handle_citHepTH_dataset(
+        edge_list_path="../data/cit-HepTh/cit-HepTh.txt",
+        abstract_path="../data/cit-HepTh/cit-HepTh-abstracts/",
+        verbose=False
+    )
 
-    # print(len(graphs))
+    print("Number graphs: ", len(graphs))
     # graphs = graphs[:2]
     #
     # dy_ge = DynGE(graphs=graphs, embedding_dim=4, init_hidden_dims=[64, 16])
@@ -104,17 +104,17 @@ if __name__ == "__main__":
     # for e in embeddings:
     #     print(embeddings[:5])
 
-    g1 = nx.gnm_random_graph(n=40, m=200, seed=6)
-    nx.draw(g1, pos=nx.spring_layout(g1, seed=6))
-    nx.draw_networkx_labels(g1, pos=nx.spring_layout(g1, seed=6))
-    plt.show()
-
-    g2 = nx.gnm_random_graph(n=60, m=400, seed=6)
-    nx.draw(g2, pos=nx.spring_layout(g2, seed=6))
-    nx.draw_networkx_labels(g2, pos=nx.spring_layout(g2, seed=6))
-    plt.show()
-
-    graphs = [g1, g2]
+    # g1 = nx.gnm_random_graph(n=40, m=200, seed=6)
+    # nx.draw(g1, pos=nx.spring_layout(g1, seed=6))
+    # nx.draw_networkx_labels(g1, pos=nx.spring_layout(g1, seed=6))
+    # plt.show()
+    #
+    # g2 = nx.gnm_random_graph(n=60, m=400, seed=6)
+    # nx.draw(g2, pos=nx.spring_layout(g2, seed=6))
+    # nx.draw_networkx_labels(g2, pos=nx.spring_layout(g2, seed=6))
+    # plt.show()
+    #
+    # graphs = [g1, g2]
     G_dfs = []
     G_partial_list = []
     for g in graphs:
