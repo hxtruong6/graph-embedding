@@ -7,12 +7,11 @@ import re
 import matplotlib.pyplot as plt
 
 from time import time
-from dyn_ge import DynGE
+from src.dyn_ge import DynGE
 
 # Dataset link: https://snap.stanford.edu/data/cit-HepTh.html
-from static_ge import StaticGE
-from utils.link_prediction import preprocessing_graph_for_link_prediction, run_evaluate, run_predict, \
-    plot_link_prediction_graph, \
+from src.static_ge import StaticGE
+from src.utils.link_prediction import preprocessing_graph_for_link_prediction, run_evaluate, run_predict, \
     top_k_prediction_edges
 
 

@@ -5,11 +5,12 @@ from gensim.models import Word2Vec
 from gensim.test.utils import get_tmpfile
 from joblib import cpu_count
 
-from utils.graph_walker_ import GraphWalker
-from utils.skip_gram import SkipGram
-from utils.visualize import plot_embeddings_with_labels
-
 # TODO: in processing
+from src.utils.graph_walker_ import GraphWalker
+from src.utils.skip_gram import SkipGram
+from src.utils.visualize import plot_embeddings_with_labels
+
+
 class Node2Vec:
     def __init__(self, graph, walks_per_vertex, walk_length, p, q):
         """
