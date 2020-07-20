@@ -2,14 +2,16 @@ import json
 from os.path import join, exists
 import os
 import tensorflow as tf
-from static_ge import StaticGE
-from utils.autoencoder import Autoencoder
+
 import networkx as nx
 from math import ceil
 
-from utils.visualize import plot_embedding
 import numpy as np
 import pandas as pd
+
+from src.static_ge import StaticGE
+from src.utils.autoencoder import Autoencoder
+from src.utils.visualize import plot_embedding
 
 
 def get_hidden_layer(prop_size, input_dim, embedding_dim):
