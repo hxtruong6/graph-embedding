@@ -7,7 +7,7 @@ intel_tensorflow==2.1.0
 pandas==1.0.5
 joblib==0.14.1
 seaborn==0.10.0
-tensorflow==2.2.0
+tensorflow==2.7.2
 lightgbm==2.3.1
 networkx==2.4
 munkres==1.1.2
