@@ -1,7 +1,7 @@
 scipy==1.4.1
 gensim==3.8.0
 Keras==2.3.1
-numpy==1.18.1
+numpy==1.22.0
 tqdm==4.47.0
 intel_tensorflow==2.1.0
 pandas==1.0.5
